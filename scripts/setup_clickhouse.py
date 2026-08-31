@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import csv
 import os
+from datetime import datetime
 
 client = clickhouse_connect.get_client(host='localhost', port=18123, username='root', password='root')
 
@@ -21,16 +22,23 @@ try:
 
                     reader_obj_sejours = csv.reader(file_obj)
                     for row in reader_obj_sejours:
+                        if row[3] != '' and row[3] != 'admission_ts':
+                            row[3] = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
+                        if row[4] != '' and row[4] != 'discharge_ts':
+                            row[4] = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
+                        elif row[4] == '':
+                            row[4] = None
                         sejours.append(row)
                     sejours.pop(0)
 
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_sejours}')
                 client.command(f'''
                     CREATE TABLE IF NOT EXISTS chu.{table_name_sejours} (
                         stay_id String,
                         patient_id String,
                         service_code String,
-                        admission_ts String,
-                        discharge_ts String,
+                        admission_ts DateTime,
+                        discharge_ts Nullable(DateTime),
                         admission_mode String,
                         discharge_mode String
                     )
@@ -53,13 +61,16 @@ try:
                     reader_obj_patients = csv.reader(file_obj)
                     for row in reader_obj_patients:
                         row.remove(row[-1])
+                        if row[1] != "birth_date":
+                            row[1] = datetime.strptime(row[1], "%Y-%m-%d")
                         patients.append(row)
                     patients.pop(0)
 
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_patients}')
                 client.command(f'''
                     CREATE TABLE IF NOT EXISTS chu.{table_name_patients} (
                         patient_id String,
-                        birth_date String,
+                        birth_date Date32,
                         sex String,
                     )
                     ENGINE = MergeTree()
@@ -86,6 +97,7 @@ try:
                             services.append(row)
                 if file == "cim10.csv":
                     cim10.pop(0)
+                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_cim10}')
                     client.command(f'''
                         CREATE TABLE IF NOT EXISTS chu.{table_name_cim10} (
                             code_cim10 String,
@@ -97,6 +109,7 @@ try:
                     client.insert(f'chu.{table_name_cim10}', cim10)
                 if file == "services.csv":
                     services.pop(0)
+                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_services}')
                     client.command(f'''
                         CREATE TABLE IF NOT EXISTS chu.{table_name_services} (
                             service_code String,
@@ -123,6 +136,7 @@ try:
                         diagnostics_json = r.get("diagnostics")
                         for diag in diagnostics_json:
                             diagnostics.append([stay_id, diag.get("code_cim10"), diag.get("type")])
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_diagnostics}')
                 client.command(f'''
                     CREATE TABLE IF NOT EXISTS chu.{table_name_diagnostics} (
                         stay_id String,
@@ -147,6 +161,7 @@ try:
                 for i in range(len(parquet_file)):
                     monitorings.append([parquet_file.get("stay_id")[i], parquet_file.get("ts")[i], parquet_file.get("heart_rate")[i], parquet_file.get("spo2")[i], parquet_file.get("temp_c")[i]])
 
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_monitoring}')
                 client.command(f'''
                     CREATE TABLE IF NOT EXISTS chu.{table_name_monitoring} (
                         stay_id String,
