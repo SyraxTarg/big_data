@@ -1,0 +1,19 @@
+[project]
+name = "big-data"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "SyraxTarg", email = "maimiti.saint-marc@efrei.net" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "clickhouse-connect>=1.7.2",
+]
+
+[project.scripts]
+big-data = "big_data:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"

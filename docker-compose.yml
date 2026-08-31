@@ -11,6 +11,10 @@ services:
     ports:
       - "18123:8123"
       - "19000:9000"
+    volumes:
+      -   ./file_storage:/var/lib/clickhouse/user_files
+    networks:
+      - metanet1
 
   metabase:
     image: metabase/metabase:latest
