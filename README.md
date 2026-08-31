@@ -24,10 +24,10 @@ big_data/
 ├── pg_data/                # Volume persistant pour la base de données PostgreSQL (Metabase)
 ├── scripts/                # Scripts utilitaires Python de nettoyage et d'analyse
 │   ├── delete_people.py    # Nettoyage et filtrage des fichiers patients
-│   └── detect_weirdo.py    # Détection d'anomalies/données manquantes dans les séjours
+│   └── setup_clickhouse.py # Ajout des données dans clickhouse
 ├── src/
 │   └── big_data/           # Package Python principal
-│       └── __init__.py     # Point d'entrée de l'application
+│       └── __init__.py     # Sert pour UV. Pas d'utilité dans notre cas
 ├── docker-compose.yml      # Configuration des services Docker (ClickHouse, PostgreSQL, Metabase)
 ├── pyproject.toml          # Configuration du projet Python (dépendances et scripts)
 ├── uv.lock                 # Fichier de verrouillage des dépendances Python (uv)
@@ -55,17 +55,11 @@ docker compose up -d
 
 #### Services déployés :
 * **ClickHouse Server** :
-  * **Port HTTP** : `18123` (mappé depuis le port interne `8123`)
-  * **Port TCP (client natif)** : `19000` (mappé depuis le port interne `9000`)
-  * **Utilisateur** : `root`
-  * **Mot de passe** : `root`
-  * **Base de données par défaut** : `chu`
+  - Accessible à l'adresse : [http://localhost:18123](http://localhost:18123)
 * **Metabase** :
   * Accessible à l'adresse : [http://localhost:3000](http://localhost:3000)
-* **PostgreSQL 16** (Base interne de Metabase) :
-  * **Utilisateur** : `metabase`
-  * **Mot de passe** : `mysecretpassword`
-  * **Base de données** : `metabaseappdb`
+* **PostgreSQL 16**
+
 
 Pour vérifier que tous les services tournent correctement :
 ```bash
@@ -83,8 +77,11 @@ Nous recommandons l'utilisation de `uv` pour une installation rapide des dépend
 # Installer les dépendances et synchroniser l'environnement virtuel
 uv sync
 
-# Lancer le script principal du package
-uv run big-data
+# Supprimer les données sensibles du lake
+uv run scripts/delete_people.py
+
+#  Ajouter les données à clickhouse
+uv run scripts/setup_clickhouse.py
 ```
 
 #### Avec pip classique (standard) :
@@ -121,14 +118,14 @@ uv run python scripts/delete_people.py
 python scripts/delete_people.py
 ```
 
-### 2. Détection d'anomalies de séjours (`scripts/detect_weirdo.py`)
-Ce script analyse le fichier de séjours d'une date spécifique (`file_storage/sejours/2026-08-26/sejours.csv`) pour identifier les lignes dites "anormales" (dont le dernier champ est manquant/vide, signalant potentiellement un séjour non clôturé ou corrompu).
+### 2. Setup clickhouse (`scripts/setup_clickhouse.py`)
+Ce script parcourt le dir `/file_storage` puis parse les fichiers `*.csv`, `*.json` et `*.parquet` pour les ajouter à clickhouse via le client python.
 
 Pour l'exécuter :
 ```bash
-uv run python scripts/detect_weirdo.py
+uv run python scripts/setup_clickhouse.py
 # ou
-python scripts/detect_weirdo.py
+python scripts/setup_clickhouse.py
 ```
 
 ---

@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from big-data!")
+""" ce fichier sert uniquement a ce que UV puisse builder le contenu du projet"""

@@ -1,3 +1,4 @@
 /pg_data
 /file_storage
 .venv
+.env

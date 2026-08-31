@@ -1,17 +1,29 @@
+""" ce script ajoute les données des CSV dans la base clickhouse."""
+
 import clickhouse_connect
 import json
 import pandas as pd
 import csv
 import os
 from datetime import datetime
+import logging
+from dotenv import load_dotenv
 
-client = clickhouse_connect.get_client(host='localhost', port=18123, username='root', password='root')
+load_dotenv()
 
-print("ADDING DATA TO CLICKHOUSE")
+client = clickhouse_connect.get_client(
+    host=os.getenv("CLICKHOUSE_HOST"),
+    port=os.getenv("CLICKHOUSE_PORT"),
+    username=os.getenv("CLICKHOUSE_USERNAME"),
+    password=os.getenv("CLICKHOUSE_USERNAME")
+)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.info("ADDING DATA TO CLICKHOUSE")
 
 try:
 
-    print("ADDING STAYS")
+    logging.info("ADDING STAYS")
     directory = "file_storage/sejours"
     for date_dir in os.listdir(f'{directory}'):
             sejours = []
@@ -31,9 +43,10 @@ try:
                         sejours.append(row)
                     sejours.pop(0)
 
-                client.command(f'DROP TABLE IF EXISTS chu.{table_name_sejours}')
+                # table bronze
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_sejours}_bronze')
                 client.command(f'''
-                    CREATE TABLE IF NOT EXISTS chu.{table_name_sejours} (
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_sejours}_bronze (
                         stay_id String,
                         patient_id String,
                         service_code String,
@@ -45,11 +58,29 @@ try:
                     ENGINE = MergeTree()
                     ORDER BY stay_id
                 ''')
-                client.insert(f'chu.{table_name_sejours}', sejours)
+                client.insert(f'chu.{table_name_sejours}_bronze', sejours)
+
+
+                # table silver
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_sejours}_silver')
+                client.command(f'''
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_sejours}_silver (
+                        stay_id String,
+                        patient_id String,
+                        service_code String,
+                        admission_ts DateTime,
+                        discharge_ts Nullable(DateTime),
+                        admission_mode String,
+                        discharge_mode String
+                    )
+                    ENGINE = MergeTree()
+                    ORDER BY stay_id
+                ''')
+                client.insert(f'chu.{table_name_sejours}_silver', sejours)
 
 
 
-    print("ADDING PATIENTS")
+    logging.info("ADDING PATIENTS")
     directory = "file_storage/patients_clean"
     for date_dir in os.listdir(f'{directory}'):
             patients = []
@@ -66,9 +97,10 @@ try:
                         patients.append(row)
                     patients.pop(0)
 
-                client.command(f'DROP TABLE IF EXISTS chu.{table_name_patients}')
+                # table bronze
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_patients}_bronze')
                 client.command(f'''
-                    CREATE TABLE IF NOT EXISTS chu.{table_name_patients} (
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_patients}_bronze (
                         patient_id String,
                         birth_date Date32,
                         sex String,
@@ -76,10 +108,24 @@ try:
                     ENGINE = MergeTree()
                     ORDER BY patient_id
                 ''')
-                client.insert(f'chu.{table_name_patients}', patients)
+                client.insert(f'chu.{table_name_patients}_bronze', patients)
 
 
-    print("ADDING REFERENTIALS")
+                # table silver
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_patients}_silver')
+                client.command(f'''
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_patients}_silver (
+                        patient_id String,
+                        birth_date Date32,
+                        sex String,
+                    )
+                    ENGINE = MergeTree()
+                    ORDER BY patient_id
+                ''')
+                client.insert(f'chu.{table_name_patients}_silver', patients)
+
+
+    logging.info("ADDING REFERENTIALS")
     directory = "file_storage/referentiels"
     for date_dir in os.listdir(f'{directory}'):
             cim10 = []
@@ -97,31 +143,64 @@ try:
                             services.append(row)
                 if file == "cim10.csv":
                     cim10.pop(0)
-                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_cim10}')
+
+
+                    # table bronze
+                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_cim10}_bronze')
                     client.command(f'''
-                        CREATE TABLE IF NOT EXISTS chu.{table_name_cim10} (
+                        CREATE TABLE IF NOT EXISTS chu.{table_name_cim10}_bronze (
                             code_cim10 String,
                             libelle String,
                         )
                         ENGINE = MergeTree()
                         ORDER BY code_cim10
                     ''')
-                    client.insert(f'chu.{table_name_cim10}', cim10)
+                    client.insert(f'chu.{table_name_cim10}_bronze', cim10)
+
+
+                    # table silver
+                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_cim10}_silver')
+                    client.command(f'''
+                        CREATE TABLE IF NOT EXISTS chu.{table_name_cim10}_silver (
+                            code_cim10 String,
+                            libelle String,
+                        )
+                        ENGINE = MergeTree()
+                        ORDER BY code_cim10
+                    ''')
+                    client.insert(f'chu.{table_name_cim10}_silver', cim10)
+
                 if file == "services.csv":
                     services.pop(0)
-                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_services}')
+
+
+                    # table bronze
+                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_services}_bronze')
                     client.command(f'''
-                        CREATE TABLE IF NOT EXISTS chu.{table_name_services} (
+                        CREATE TABLE IF NOT EXISTS chu.{table_name_services}_bronze (
                             service_code String,
                             service_label String,
                         )
                         ENGINE = MergeTree()
                         ORDER BY service_code
                     ''')
-                    client.insert(f'chu.{table_name_services}', services)
+                    client.insert(f'chu.{table_name_services}_bronze', services)
 
 
-    print("ADDING DIAGNOSTICS")
+                    # table silver
+                    client.command(f'DROP TABLE IF EXISTS chu.{table_name_services}_silver')
+                    client.command(f'''
+                        CREATE TABLE IF NOT EXISTS chu.{table_name_services}_silver (
+                            service_code String,
+                            service_label String,
+                        )
+                        ENGINE = MergeTree()
+                        ORDER BY service_code
+                    ''')
+                    client.insert(f'chu.{table_name_services}_silver', services)
+
+
+    logging.info("ADDING DIAGNOSTICS")
     directory = "file_storage/diagnostics"
     for date_dir in os.listdir(f'{directory}'):
             diagnostics = []
@@ -136,9 +215,12 @@ try:
                         diagnostics_json = r.get("diagnostics")
                         for diag in diagnostics_json:
                             diagnostics.append([stay_id, diag.get("code_cim10"), diag.get("type")])
-                client.command(f'DROP TABLE IF EXISTS chu.{table_name_diagnostics}')
+
+
+                # table bronze
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_diagnostics}_bronze')
                 client.command(f'''
-                    CREATE TABLE IF NOT EXISTS chu.{table_name_diagnostics} (
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_diagnostics}_bronze (
                         stay_id String,
                         code_cim10 String,
                         type String
@@ -146,10 +228,24 @@ try:
                     ENGINE = MergeTree()
                     ORDER BY stay_id
                 ''')
-                client.insert(f'chu.{table_name_diagnostics}', diagnostics)
+                client.insert(f'chu.{table_name_diagnostics}_bronze', diagnostics)
 
 
-    print("ADDING MONITORING")
+                # table silver
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_diagnostics}_silver')
+                client.command(f'''
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_diagnostics}_silver (
+                        stay_id String,
+                        code_cim10 String,
+                        type String
+                    )
+                    ENGINE = MergeTree()
+                    ORDER BY stay_id
+                ''')
+                client.insert(f'chu.{table_name_diagnostics}_silver', diagnostics)
+
+
+    logging.info("ADDING MONITORING")
     directory = "file_storage/monitoring"
     for date_dir in os.listdir(f'{directory}'):
             monitorings = []
@@ -161,9 +257,11 @@ try:
                 for i in range(len(parquet_file)):
                     monitorings.append([parquet_file.get("stay_id")[i], parquet_file.get("ts")[i], parquet_file.get("heart_rate")[i], parquet_file.get("spo2")[i], parquet_file.get("temp_c")[i]])
 
-                client.command(f'DROP TABLE IF EXISTS chu.{table_name_monitoring}')
+
+                # table bronze
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_monitoring}_bronze')
                 client.command(f'''
-                    CREATE TABLE IF NOT EXISTS chu.{table_name_monitoring} (
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_monitoring}_bronze (
                         stay_id String,
                         ts date,
                         heart_rate Int,
@@ -173,9 +271,25 @@ try:
                     ENGINE = MergeTree()
                     ORDER BY stay_id
                 ''')
-                client.insert(f'chu.{table_name_monitoring}', monitorings)
+                client.insert(f'chu.{table_name_monitoring}_bronze', monitorings)
+
+
+                # table silver
+                client.command(f'DROP TABLE IF EXISTS chu.{table_name_monitoring}_silver')
+                client.command(f'''
+                    CREATE TABLE IF NOT EXISTS chu.{table_name_monitoring}_silver (
+                        stay_id String,
+                        ts date,
+                        heart_rate Int,
+                        spo2 Int,
+                        temp_c Float
+                    )
+                    ENGINE = MergeTree()
+                    ORDER BY stay_id
+                ''')
+                client.insert(f'chu.{table_name_monitoring}_silver', monitorings)
 
 except Exception as e:
-    print(f'AN ERROR HAPPENED: {e}')
+    logging.error(f'AN ERROR HAPPENED: {e}')
 
-print("DATA SUCCESSFULLY ADDED")
+logging.info("DATA SUCCESSFULLY ADDED")
