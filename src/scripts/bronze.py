@@ -23,7 +23,9 @@ def main():
                 patient_id String,
                 service_code String,
                 admission_ts DateTime,
-                discharge_ts Nullable(DateTime)
+                discharge_ts Nullable(DateTime),
+                inserted_at DateTime,
+                data_path String
             )
             ENGINE = MergeTree()
             ORDER BY stay_id
@@ -41,6 +43,8 @@ def main():
                             elif row[4] == '':
                                 row[4] = None
                             del row[-2:]
+                            row.append(datetime.now())
+                            row.append(f'{directory}/{date_dir}/{file}')
                             sejours.append(row)
                         sejours.pop(0)
 
@@ -57,6 +61,8 @@ def main():
                 patient_id String,
                 birth_date Date32,
                 sex String,
+                inserted_at DateTime,
+                data_path String
             )
             ENGINE = MergeTree()
             ORDER BY patient_id
@@ -71,6 +77,8 @@ def main():
                             row.remove(row[-1])
                             if row[1] != "birth_date":
                                 row[1] = datetime.strptime(row[1], "%Y-%m-%d")
+                            row.append(datetime.now())
+                            row.append(f'{directory}/{date_dir}/{file}')
                             patients.append(row)
                         patients.pop(0)
                     clickhouse_client.insert(f'chu.patients_bronze', patients)
@@ -85,6 +93,8 @@ def main():
             CREATE TABLE IF NOT EXISTS chu.cim10_bronze (
                 code_cim10 String,
                 libelle String,
+                inserted_at DateTime,
+                data_path String
             )
             ENGINE = MergeTree()
             ORDER BY code_cim10
@@ -97,6 +107,8 @@ def main():
             CREATE TABLE IF NOT EXISTS chu.services_bronze (
                 service_code String,
                 service_label String,
+                inserted_at DateTime,
+                data_path String
             )
             ENGINE = MergeTree()
             ORDER BY service_code
@@ -111,8 +123,12 @@ def main():
                         reader_obj_referentiels = csv.reader(file_obj)
                         for row in reader_obj_referentiels:
                             if file == "cim10.csv":
+                                row.append(datetime.now())
+                                row.append(f'{directory}/{date_dir}/{file}')
                                 cim10.append(row)
                             if file == "services.csv":
+                                row.append(datetime.now())
+                                row.append(f'{directory}/{date_dir}/{file}')
                                 services.append(row)
                     if file == "cim10.csv":
                         cim10.pop(0)
@@ -131,7 +147,9 @@ def main():
         clickhouse_client.command(f'''
             CREATE TABLE IF NOT EXISTS chu.diagnostics_bronze (
                 stay_id String,
-                code_cim10 String
+                code_cim10 String,
+                inserted_at DateTime,
+                data_path String
             )
             ENGINE = MergeTree()
             ORDER BY stay_id
@@ -146,7 +164,7 @@ def main():
                             stay_id = r.get("stay_id")
                             diagnostics_json = r.get("diagnostics")
                             for diag in diagnostics_json:
-                                diagnostics.append([stay_id, diag.get("code_cim10")])
+                                diagnostics.append([stay_id, diag.get("code_cim10"), datetime.now(), f'{directory}/{date_dir}/{file}'])
 
                     clickhouse_client.insert(f'chu.diagnostics_bronze', diagnostics)
 
@@ -163,7 +181,9 @@ def main():
                 ts date,
                 heart_rate Int,
                 spo2 Int,
-                temp_c Float
+                temp_c Float,
+                inserted_at DateTime,
+                data_path String
             )
             ENGINE = MergeTree()
             ORDER BY stay_id
@@ -174,7 +194,17 @@ def main():
                 for file in os.listdir(f'{directory}/{date_dir}'):
                     parquet_file = pd.read_parquet(f'{directory}/{date_dir}/monitoring.parquet')
                     for i in range(len(parquet_file)):
-                        monitorings.append([parquet_file.get("stay_id")[i], parquet_file.get("ts")[i], parquet_file.get("heart_rate")[i], parquet_file.get("spo2")[i], parquet_file.get("temp_c")[i]])
+                        monitorings.append(
+                            [
+                                parquet_file.get("stay_id")[i], 
+                                parquet_file.get("ts")[i], 
+                                parquet_file.get("heart_rate")[i], 
+                                parquet_file.get("spo2")[i], 
+                                parquet_file.get("temp_c")[i],
+                                datetime.now(),
+                                f'{directory}/{date_dir}/{file}'
+                            ]
+                        )
 
                     clickhouse_client.insert(f'chu.monitoring_bronze', monitorings)
 

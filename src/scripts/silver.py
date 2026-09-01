@@ -44,13 +44,15 @@ def copy_tables():
     clickhouse_client.command(f'''
                 CREATE TABLE IF NOT EXISTS chu.diagnostics_silver (
                     patient_id String,
-                    code_cim10 String
+                    code_cim10 String,
+                    inserted_at DateTime,
+                    data_path String
                 )
                 ENGINE = MergeTree()
                 ORDER BY patient_id
             ''')
     clickhouse_client.query(f'''
-        INSERT INTO chu.diagnostics_silver SELECT "chu"."patients_bronze"."patient_id" AS "patient_id", "chu"."diagnostics_bronze"."code_cim10" FROM "chu"."diagnostics_bronze" 
+        INSERT INTO chu.diagnostics_silver SELECT "chu"."patients_bronze"."patient_id" AS "patient_id", "chu"."diagnostics_bronze"."code_cim10", "chu"."diagnostics_bronze"."inserted_at", "chu"."diagnostics_bronze"."data_path" FROM "chu"."diagnostics_bronze"
         INNER JOIN "chu"."sejours_bronze" ON "chu"."diagnostics_bronze"."stay_id" = "chu"."sejours_bronze"."stay_id"
         INNER JOIN "chu"."patients_bronze" ON "chu"."sejours_bronze"."patient_id" = "chu"."patients_bronze"."patient_id"
     ''')
@@ -64,7 +66,9 @@ def copy_tables():
                     ts date,
                     heart_rate Int,
                     spo2 Int,
-                    temp_c Float
+                    temp_c Float,
+                    inserted_at DateTime,
+                    data_path String
                 )
                 ENGINE = MergeTree()
                 ORDER BY patient_id
@@ -73,7 +77,9 @@ def copy_tables():
                                   "chu"."monitoring_bronze"."ts",
                                   "chu"."monitoring_bronze"."heart_rate",
                                   "chu"."monitoring_bronze"."spo2",
-                                  "chu"."monitoring_bronze"."temp_c" FROM "chu"."monitoring_bronze"
+                                  "chu"."monitoring_bronze"."temp_c",
+                                  "chu"."monitoring_bronze"."inserted_at",
+                                  "chu"."monitoring_bronze"."data_path" FROM "chu"."monitoring_bronze"
                                   INNER JOIN "chu"."sejours_bronze" ON "chu"."monitoring_bronze"."stay_id" = "chu"."sejours_bronze"."stay_id"
                                   INNER JOIN "chu"."patients_bronze" ON "chu"."sejours_bronze"."patient_id" = "chu"."patients_bronze"."patient_id"''')
 
@@ -102,7 +108,7 @@ def main():
     logging.info("CLEANING MONITORING")
     clickhouse_client.query(f'''
         DELETE FROM chu.monitoring_silver
-        WHERE 
+        WHERE
         heart_rate < 20 OR heart_rate > 250
         OR spo2 < 50 OR spo2 > 100
         OR temp_c < 30 OR temp_c > 45
