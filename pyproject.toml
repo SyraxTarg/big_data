@@ -21,6 +21,7 @@ generating-lake = "scripts.generating_lake:main"
 bronze = "scripts.bronze:main"
 data-cleaning = "scripts.data_cleaning:main"
 silver = "scripts.silver:main"
+gold = "scripts.gold:main"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
