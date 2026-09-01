@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "SyraxTarg", email = "maimiti.saint-marc@efrei.net" }
+    { name = "SyraxTarg", email = "maimiti.saint-marc@efrei.net" },
+    { name = "Claire Sbaffe", email = "claire.sbaffe@efrei.net" }
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -16,6 +17,9 @@ dependencies = [
 
 [project.scripts]
 big-data = "big_data:main"
+generating-lake = "scripts.generating_lake:main"
+bronze = "scripts.bronze:main"
+data-cleaning = "scripts.data_cleaning:main"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
