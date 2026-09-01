@@ -1,6 +1,8 @@
 from big_data.clickhouse_config.clickhouse import client as clickhouse_client
 import logging
 
+COHORT_SIZE_LIMIT = 5
+
 def copy_tables():
     logging.info("COPYING TABLES FROM BRONZE FOR SILVER")
 
@@ -114,6 +116,17 @@ def main():
         OPTIMIZE TABLE chu.sejours_silver FINAL DEDUPLICATE BY stay_id
     ''')
 
+    logging.info("Deleting smallest stays cohorts")
+    clickhouse_client.query(f'''
+        DELETE FROM chu.sejours_silver
+        WHERE service_code IN (
+            SELECT service_code
+            FROM chu.sejours_silver
+            GROUP BY service_code
+            HAVING COUNT(DISTINCT patient_id) < 1580
+        )
+    ''')
+
 
     logging.info("Cleaning monitoring")
     clickhouse_client.query(f'''
@@ -129,10 +142,51 @@ def main():
         OPTIMIZE TABLE chu.monitoring_silver FINAL DEDUPLICATE BY patient_id, ts
     ''')
 
+    logging.info("Deleting smallest monitoring cohorts")
+    clickhouse_client.query(f'''
+        DELETE FROM chu.monitoring_silver
+        WHERE heart_rate IN (
+            SELECT heart_rate
+            FROM chu.monitoring_silver
+            GROUP BY heart_rate
+            HAVING COUNT(DISTINCT patient_id) < {COHORT_SIZE_LIMIT}
+        )
+    ''')
+    clickhouse_client.query(f'''
+        DELETE FROM chu.monitoring_silver
+        WHERE spo2 IN (
+            SELECT spo2
+            FROM chu.monitoring_silver
+            GROUP BY spo2
+            HAVING COUNT(DISTINCT patient_id) < {COHORT_SIZE_LIMIT}
+        )
+    ''')
+    clickhouse_client.query(f'''
+        DELETE FROM chu.monitoring_silver
+        WHERE temp_c IN (
+            SELECT temp_c
+            FROM chu.monitoring_silver
+            GROUP BY temp_c
+            HAVING COUNT(DISTINCT patient_id) < {COHORT_SIZE_LIMIT}
+        )
+    ''')
+
+
 
     logging.info("Deduplicating diagnostics")
     clickhouse_client.query(f'''
         OPTIMIZE TABLE chu.diagnostics_silver FINAL DEDUPLICATE
+    ''')
+
+    logging.info("Deleting smallest diagnostics cohorts")
+    clickhouse_client.query(f'''
+        DELETE FROM chu.diagnostics_silver
+        WHERE code_cim10 IN (
+            SELECT code_cim10
+            FROM chu.diagnostics_silver
+            GROUP BY code_cim10
+            HAVING COUNT(DISTINCT patient_id) < 5
+        )
     ''')
 
     logging.info("Deduplicating references")
