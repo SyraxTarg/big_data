@@ -4,7 +4,7 @@ import logging
 def copy_tables():
     logging.info("COPYING TABLES FROM BRONZE FOR SILVER")
 
-    logging.info("COPYING STAYS")
+    logging.info("Copying stays")
     clickhouse_client.command(f'DROP TABLE IF EXISTS chu.sejours_silver')
     clickhouse_client.query(f'''
         CREATE TABLE chu.sejours_silver AS chu.sejours_bronze
@@ -13,7 +13,7 @@ def copy_tables():
         INSERT INTO chu.sejours_silver SELECT * FROM chu.sejours_bronze;
     ''')
 
-    logging.info("COPYING PATIENTS")
+    logging.info("Copying patients")
     clickhouse_client.command(f'DROP TABLE IF EXISTS chu.patients_silver')
     clickhouse_client.query(f'''
         CREATE TABLE chu.patients_silver AS chu.patients_bronze
@@ -22,7 +22,7 @@ def copy_tables():
         INSERT INTO chu.patients_silver SELECT * FROM chu.patients_bronze;
     ''')
 
-    logging.info("COPYING REFERENTIALS")
+    logging.info("Copying referentials")
     clickhouse_client.command(f'DROP TABLE IF EXISTS chu.cim10_silver')
     clickhouse_client.query(f'''
         CREATE TABLE chu.cim10_silver AS chu.cim10_bronze
@@ -39,7 +39,7 @@ def copy_tables():
         INSERT INTO chu.services_silver SELECT * FROM chu.services_bronze;
     ''')
 
-    logging.info("COPYING DIAGNOSTICS")
+    logging.info("Copying diagnostics")
     clickhouse_client.command(f'DROP TABLE IF EXISTS chu.diagnostics_silver')
     clickhouse_client.command(f'''
                 CREATE TABLE IF NOT EXISTS chu.diagnostics_silver (
@@ -58,12 +58,12 @@ def copy_tables():
     ''')
 
 
-    logging.info("COPYING MONITORING")
+    logging.info("Copying monitoring\n")
     clickhouse_client.command(f'DROP TABLE IF EXISTS chu.monitoring_silver')
     clickhouse_client.command(f'''
                 CREATE TABLE IF NOT EXISTS chu.monitoring_silver (
                     patient_id String,
-                    ts date,
+                    ts DateTime,
                     heart_rate Int,
                     spo2 Int,
                     temp_c Float,
@@ -88,9 +88,9 @@ def main():
 
     copy_tables()
 
-    logging.info("CLEANING DATA FOR SILVER")
+    logging.info("CLEANING AND DEDUPLICATING DATA FOR SILVER")
 
-    logging.info("CLEANING PATIENTS")
+    logging.info("Cleaning patients")
     clickhouse_client.query(f'''
         DELETE FROM chu.patients_silver WHERE sex NOT IN ('F', 'M')
     ''')
@@ -98,14 +98,24 @@ def main():
         DELETE FROM chu.patients_silver WHERE birth_date > now
     ''')
 
+    logging.info("Deduplicating patients")
+    clickhouse_client.query(f'''
+        OPTIMIZE TABLE chu.patients_silver FINAL DEDUPLICATE BY patient_id
+    ''')
 
-    logging.info("CLEANING STAYS")
+
+    logging.info("Cleaning stays")
     clickhouse_client.query(f'''
         DELETE FROM chu.sejours_silver WHERE discharge_ts < admission_ts
     ''')
 
+    logging.info("Deduplicating stays")
+    clickhouse_client.query(f'''
+        OPTIMIZE TABLE chu.sejours_silver FINAL DEDUPLICATE BY stay_id
+    ''')
 
-    logging.info("CLEANING MONITORING")
+
+    logging.info("Cleaning monitoring")
     clickhouse_client.query(f'''
         DELETE FROM chu.monitoring_silver
         WHERE
@@ -113,6 +123,26 @@ def main():
         OR spo2 < 50 OR spo2 > 100
         OR temp_c < 30 OR temp_c > 45
     ''')
+
+    logging.info("Deduplicating monitoring")
+    clickhouse_client.query(f'''
+        OPTIMIZE TABLE chu.monitoring_silver FINAL DEDUPLICATE BY patient_id, ts
+    ''')
+
+
+    logging.info("Deduplicating diagnostics")
+    clickhouse_client.query(f'''
+        OPTIMIZE TABLE chu.diagnostics_silver FINAL DEDUPLICATE
+    ''')
+
+    logging.info("Deduplicating references")
+    clickhouse_client.query(f'''
+        OPTIMIZE TABLE chu.cim10_silver FINAL DEDUPLICATE
+    ''')
+    clickhouse_client.query(f'''
+        OPTIMIZE TABLE chu.services_silver FINAL DEDUPLICATE
+    ''')
+
 
 if __name__ == "__main__":
     main()
