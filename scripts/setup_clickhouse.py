@@ -40,8 +40,10 @@ try:
                             row[4] = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
                         elif row[4] == '':
                             row[4] = None
+                        del row[-2:]
                         sejours.append(row)
                     sejours.pop(0)
+
 
                 # table bronze
                 client.command(f'DROP TABLE IF EXISTS chu.{table_name_sejours}_bronze')
@@ -51,9 +53,7 @@ try:
                         patient_id String,
                         service_code String,
                         admission_ts DateTime,
-                        discharge_ts Nullable(DateTime),
-                        admission_mode String,
-                        discharge_mode String
+                        discharge_ts Nullable(DateTime)
                     )
                     ENGINE = MergeTree()
                     ORDER BY stay_id
@@ -69,9 +69,7 @@ try:
                         patient_id String,
                         service_code String,
                         admission_ts DateTime,
-                        discharge_ts Nullable(DateTime),
-                        admission_mode String,
-                        discharge_mode String
+                        discharge_ts Nullable(DateTime)
                     )
                     ENGINE = MergeTree()
                     ORDER BY stay_id
@@ -214,7 +212,7 @@ try:
                         stay_id = r.get("stay_id")
                         diagnostics_json = r.get("diagnostics")
                         for diag in diagnostics_json:
-                            diagnostics.append([stay_id, diag.get("code_cim10"), diag.get("type")])
+                            diagnostics.append([stay_id, diag.get("code_cim10")])
 
 
                 # table bronze
@@ -222,8 +220,7 @@ try:
                 client.command(f'''
                     CREATE TABLE IF NOT EXISTS chu.{table_name_diagnostics}_bronze (
                         stay_id String,
-                        code_cim10 String,
-                        type String
+                        code_cim10 String
                     )
                     ENGINE = MergeTree()
                     ORDER BY stay_id
@@ -236,8 +233,7 @@ try:
                 client.command(f'''
                     CREATE TABLE IF NOT EXISTS chu.{table_name_diagnostics}_silver (
                         stay_id String,
-                        code_cim10 String,
-                        type String
+                        code_cim10 String
                     )
                     ENGINE = MergeTree()
                     ORDER BY stay_id
