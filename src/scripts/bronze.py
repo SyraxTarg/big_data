@@ -178,7 +178,7 @@ def main():
         clickhouse_client.command(f'''
             CREATE TABLE IF NOT EXISTS chu.monitoring_bronze (
                 stay_id String,
-                ts date,
+                ts DateTime,
                 heart_rate Int,
                 spo2 Int,
                 temp_c Float,
