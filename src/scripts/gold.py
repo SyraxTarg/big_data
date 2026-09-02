@@ -58,7 +58,47 @@ class Gold():
     def gold_services(self):
         logging.info("COPYING SERVICES")
         try:
-            self.copy_table("services")
+            self.create_table(
+                    "services_gold",
+                    [
+                        {"arg": "service_code", "type": "String"},
+                        {"arg": "service_label", "type": "String"},
+                        {"arg": "dms", "type": "Float64"},
+                        {"arg": "inserted_at", "type": "DateTime"},
+                        {"arg": "data_path", "type": "String"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO chu.services_gold
+                SELECT service_code, service_label, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS, inserted_at, data_path
+                FROM "chu"."services_silver"
+                JOIN "chu"."sejours_silver" ON "chu"."sejours_silver"."service_code" = "chu"."services_silver"."service_code"
+                GROUP BY service_code, service_label, inserted_at, data_path ;
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during services copy")
+            raise e
+
+    def gold_service_per_day(self):
+        logging.info("PATIENTS COUNT PER DAY")
+        try:
+            self.create_table(
+                    "services_per_day_gold",
+                    [
+                        {"arg": "service_code", "type": "String"},
+                        {"arg": "service_label", "type": "String"},
+                        {"arg": "patients_count", "type": "Int"},
+                        {"arg": "date", "type": "Date"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO chu.services_per_day_gold
+                SELECT service_code, service_label, COUNT(date(admission_ts)) AS patients_count, date(admission_ts) AS date
+                FROM "chu"."services_silver" JOIN "chu"."sejours_silver"
+                ON "chu"."sejours_silver"."service_code" = "chu"."services_silver"."service_code"
+                GROUP BY service_code, service_label, date
+                ORDER BY date ASC;
+            ''')
         except Exception as e:
             logging.error("Something went wrong during services copy")
             raise e
@@ -107,6 +147,7 @@ def main():
         gold.gold_services()
         gold.gold_diagnostics()
         gold.gold_monitoring()
+        gold.gold_service_per_day()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
