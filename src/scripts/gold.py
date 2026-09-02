@@ -23,12 +23,12 @@ class Gold():
                 raise e
 
     def copy_table(self, table_name):
-        clickhouse_client.command(f'DROP TABLE IF EXISTS chu.{table_name}_gold')
+        clickhouse_client.command(f'DROP TABLE IF EXISTS {self.db}.{table_name}_gold')
         clickhouse_client.query(f'''
-            CREATE TABLE chu.{table_name}_gold AS chu.{table_name}_silver
+            CREATE TABLE {self.db}.{table_name}_gold AS {self.db}.{table_name}_silver
         ''')
         clickhouse_client.query(f'''
-            INSERT INTO chu.{table_name}_gold SELECT * FROM chu.{table_name}_silver;
+            INSERT INTO {self.db}.{table_name}_gold SELECT * FROM {self.db}.{table_name}_silver;
         ''')
 
 
@@ -70,10 +70,10 @@ class Gold():
                     ]
                 )
             clickhouse_client.query(f'''
-                INSERT INTO chu.services_gold
+                INSERT INTO {self.db}.services_gold
                 SELECT service_code, service_label, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS, inserted_at, data_path
-                FROM "chu"."services_silver"
-                JOIN "chu"."sejours_silver" ON "chu"."sejours_silver"."service_code" = "chu"."services_silver"."service_code"
+                FROM "{self.db}"."services_silver"
+                JOIN "{self.db}"."sejours_silver" ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
                 GROUP BY service_code, service_label, inserted_at, data_path ;
             ''')
         except Exception as e:
@@ -93,15 +93,106 @@ class Gold():
                     ]
                 )
             clickhouse_client.query(f'''
-                INSERT INTO chu.services_per_day_gold
+                INSERT INTO {self.db}.services_per_day_gold
                 SELECT service_code, service_label, COUNT(date(admission_ts)) AS patients_count, date(admission_ts) AS date
-                FROM "chu"."services_silver" JOIN "chu"."sejours_silver"
-                ON "chu"."sejours_silver"."service_code" = "chu"."services_silver"."service_code"
+                FROM "{self.db}"."services_silver" JOIN "{self.db}"."sejours_silver"
+                ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
                 GROUP BY service_code, service_label, date
                 ORDER BY date ASC;
             ''')
         except Exception as e:
             logging.error("Something went wrong during services copy")
+            raise e
+
+
+    def gold_readmission_per_services(self):
+        logging.info("READMISSIONS PER SERVICE")
+        try:
+            self.create_table(
+                    "readmissions_gold",
+                    [
+                        {"arg": "service_code", "type": "String"},
+                        {"arg": "total_stay", "type": "Int"},
+                        {"arg": "total_readmissions", "type": "Int"},
+                        {"arg": "readmission_percentage", "type": "Float64"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.readmissions_gold
+                WITH exists_and_admissions AS (
+                    SELECT
+                        patient_id,
+                        service_code,
+                        discharge_ts AS last_exit_date,
+                        LEAD(admission_ts) OVER (PARTITION BY patient_id ORDER BY admission_ts ASC) AS next_admission_date
+                    FROM {self.db}.sejours_silver
+                ),
+                readmissions AS (
+                    SELECT
+                        service_code,
+                        patient_id,
+                        CASE
+                            WHEN next_admission_date IS NOT NULL
+                            AND dateDiff('day', last_exit_date, next_admission_date) > 0
+                            AND dateDiff('day', last_exit_date, next_admission_date) <= 30
+                            THEN 1
+                            ELSE 0
+                        END AS is_readmitted
+                    FROM exists_and_admissions
+                )
+                SELECT
+                    service_code,
+                    COUNT(DISTINCT patient_id) AS total_stays,
+                    SUM(is_readmitted) AS total_readmissions_30j,
+                    ROUND(SUM(is_readmitted) * 100.0 / COUNT(DISTINCT patient_id), 2) AS readmission_percentage
+                FROM readmissions
+                GROUP BY service_code
+                ORDER BY readmission_percentage DESC;
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during readmissions per services")
+            raise e
+
+
+    def gold_readmission_total(self):
+        logging.info("READMISSIONS TOTAL")
+        try:
+            self.create_table(
+                    "readmissions_total_gold",
+                    [
+                        {"arg": "total_stay", "type": "Int"},
+                        {"arg": "total_readmissions", "type": "Int"},
+                        {"arg": "readmission_percentage", "type": "Float64"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.readmissions_total_gold
+                WITH exists_and_admissions AS (
+                    SELECT
+                        patient_id,
+                        discharge_ts AS last_exit_date,
+                        LEAD(admission_ts) OVER (PARTITION BY patient_id ORDER BY admission_ts ASC) AS next_admission_date
+                    FROM {self.db}.sejours_silver
+                ),
+                readmissions AS (
+                    SELECT
+                        CASE
+                            WHEN next_admission_date IS NOT NULL
+                            AND dateDiff('day', last_exit_date, next_admission_date) > 0
+                            AND dateDiff('day', last_exit_date, next_admission_date) <= 30
+                            THEN 1
+                            ELSE 0
+                        END AS is_readmitted
+                    FROM exists_and_admissions
+                )
+                SELECT
+                    COUNT(*) AS total_stays,
+                    SUM(is_readmitted) AS total_readmissions_30j,
+                    ROUND(SUM(is_readmitted) * 100.0 / COUNT(*), 2) AS total_readmission_percentage
+                FROM readmissions;
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during readmissions total")
             raise e
 
     def gold_create_age_per_sex(self):
@@ -112,8 +203,9 @@ class Gold():
                     [
                         {"arg": "age_group", "type": "String"},
                         {"arg": "sex", "type": "String"},
-                        {"arg": "patients_count", "type": "Int"},
+                        {"arg": "patients_count", "type": "Nullable(Int)"},
                         {"arg": "avg_age", "type": "Float"},
+                        {"arg": "code_cim10", "type": "String"},
                     ]
                 )
         except Exception as e:
@@ -125,16 +217,27 @@ class Gold():
         try:
             if age_stop:
                 clickhouse_client.query(f'''
-                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age) SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age FROM (
-                        select patient_id, age('year', birth_date, today()) as age, sex   FROM "chu"."patients_bronze" group by patient_id, sex, age HAVING age BETWEEN {age_start} AND {age_stop}
-                        ) GROUP BY sex;
+                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10)
+                    SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10 FROM (
+                        select patient_id, age('year', birth_date, today()) as age, sex, code_cim10
+                        FROM "{self.db}"."patients_silver"
+                        JOIN {self.db}.diagnostics_silver
+                        ON {self.db}.patients_silver.patient_id = {self.db}.diagnostics_silver.patient_id
+                        GROUP BY patient_id, sex, age, code_cim10 HAVING age BETWEEN {age_start} AND {age_stop}
+                                                ) GROUP BY sex, code_cim10;
                 ''')
             else:
                 clickhouse_client.query(f'''
-                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age) SELECT '>66', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age FROM (
-                        select patient_id, age('year', birth_date, today()) as age, sex   FROM "chu"."patients_bronze" group by patient_id, sex, age HAVING age >= {age_start}
-                        ) GROUP BY sex;
+                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10)
+                    SELECT '>{age_start}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10 FROM (
+                        select patient_id, age('year', birth_date, today()) as age, sex, code_cim10
+                        FROM "{self.db}"."patients_silver"
+                        JOIN {self.db}.diagnostics_silver
+                        ON {self.db}.patients_silver.patient_id = {self.db}.diagnostics_silver.patient_id
+                        GROUP BY patient_id, sex, age, code_cim10 HAVING age >= {age_start}
+                                                ) GROUP BY sex, code_cim10;
                 ''')
+            clickhouse_client.command(f'alter table {self.db}.age_per_sex_gold update patients_count = null where patients_count < 5;')
         except Exception as e:
             logging.error("Something went wrong during age group insertion")
             raise e
@@ -161,13 +264,13 @@ class Gold():
                     ]
                 )
             clickhouse_client.query(f'''
-                INSERT INTO chu.diagnostics_gold SELECT patient_id,
+                INSERT INTO {self.db}.diagnostics_gold SELECT patient_id,
                 code_cim10,
                 age('year', birth_date, today()) AS age,
                 inserted_at, data_path
-                FROM "chu"."diagnostics_silver"
-                JOIN "chu"."patients_silver"
-                ON "chu"."diagnostics_silver"."patient_id" = "chu"."patients_silver"."patient_id";
+                FROM "{self.db}"."diagnostics_silver"
+                JOIN "{self.db}"."patients_silver"
+                ON "{self.db}"."diagnostics_silver"."patient_id" = "{self.db}"."patients_silver"."patient_id";
             ''')
         except Exception as e:
             logging.error("Something went wrong during diagnostics copy")
@@ -179,7 +282,7 @@ class Gold():
             TACHYCARDIA_THRESHOLD = 100
             O2_DESATURATION_THRESHOLD = 92
             FEVER_THRESHOLD = 38.5
-            
+
             logging.info("Processing monitoring alerts per day")
             self.create_table(
                     "monitoring_alerts_per_day_gold",
@@ -194,8 +297,8 @@ class Gold():
                     ]
                 )
             clickhouse_client.query(f'''
-            INSERT INTO chu.monitoring_alerts_per_day_gold
-                SELECT 
+            INSERT INTO {self.db}.monitoring_alerts_per_day_gold
+                SELECT
                     date(ts) AS date,
                     COUNT() AS total_monitored,
                     COUNT(CASE WHEN  heart_rate < {BRADYCARDIA_THRESHOLD} OR heart_rate > {TACHYCARDIA_THRESHOLD} OR spo2 < {O2_DESATURATION_THRESHOLD} OR temp_c > {FEVER_THRESHOLD} THEN 1 END) AS total_alerts,
@@ -203,7 +306,7 @@ class Gold():
                     COUNT(CASE WHEN heart_rate > {TACHYCARDIA_THRESHOLD} THEN 1 END) AS tachycardia_alerts,
                     COUNT(CASE WHEN spo2 < {O2_DESATURATION_THRESHOLD} THEN 1 END) AS o2_desaturation_alerts,
                     COUNT(CASE WHEN temp_c > {FEVER_THRESHOLD} THEN 1 END) AS fever_alerts
-                FROM chu.monitoring_gold
+                FROM {self.db}.monitoring_gold
                 GROUP BY date(ts)
                 ORDER BY date
             ''')
@@ -223,20 +326,20 @@ class Gold():
                     ]
                 )
             clickhouse_client.query(f'''
-                INSERT INTO chu.cohorts_per_diagnostic_gold
+                INSERT INTO {self.db}.cohorts_per_diagnostic_gold
                     WITH cohort_sizes AS (
-                        SELECT 
+                        SELECT
                             code_cim10 ,
                             COUNT(DISTINCT patient_id) AS user_count
-                        FROM chu.diagnostics_gold
-                        GROUP BY code_cim10 
+                        FROM {self.db}.diagnostics_gold
+                        GROUP BY code_cim10
                     )
-                    SELECT 
+                    SELECT
                         diag.code_cim10 ,
                         cim10.libelle,
                         diag.user_count
                     FROM cohort_sizes diag
-                    INNER JOIN chu.cim10_gold cim10 ON cim10.code_cim10 = diag.code_cim10
+                    INNER JOIN {self.db}.cim10_gold cim10 ON cim10.code_cim10 = diag.code_cim10
                     ORDER BY diag.user_count DESC
             ''')
         except Exception as e:
@@ -270,6 +373,8 @@ def main():
         gold.gold_insert_age_per_sex(26, 39)
         gold.gold_insert_age_per_sex(40, 65)
         gold.gold_insert_age_per_sex(66)
+        gold.gold_readmission_per_services()
+        gold.gold_readmission_total()
         gold.clinical_research()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
