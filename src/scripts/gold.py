@@ -117,7 +117,7 @@ class Gold():
             self.create_table(
                     "diagnostics_gold",
                     [
-                        {"arg": "stay_id", "type": "String"},
+                        {"arg": "patient_id", "type": "String"},
                         {"arg": "code_cim10", "type": "String"},
                         {"arg": "age", "type": "int"},
                         {"arg": "inserted_at", "type": "DateTime"},
@@ -137,6 +137,45 @@ class Gold():
             logging.error("Something went wrong during diagnostics copy")
             raise e
 
+    def cohorts_per_diagnostic(self):
+        try:
+            logging.info("Processing cohorts per diagnostics")
+            self.create_table(
+                    "cohorts_per_diagnostic_gold",
+                    [
+                        {"arg": "code_cim10", "type": "String"},
+                        {"arg": "libelle", "type": "String"},
+                        {"arg": "user_count", "type": "int"}
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO chu.cohorts_per_diagnostic_gold
+                    WITH cohort_sizes AS (
+                        SELECT 
+                            code_cim10 ,
+                            COUNT(DISTINCT patient_id) AS user_count
+                        FROM chu.diagnostics_gold
+                        GROUP BY code_cim10 
+                    )
+                    SELECT 
+                        diag.code_cim10 ,
+                        cim10.libelle,
+                        diag.user_count
+                    FROM cohort_sizes diag
+                    INNER JOIN chu.cim10_gold cim10 ON cim10.code_cim10 = diag.code_cim10
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during cohorts per diagnostics process")
+            raise e
+
+    def clinical_research(self):
+        try:
+            logging.info("PROCESSING CLINICAL RESEARCH")
+            self.cohorts_per_diagnostic()
+        except Exception as e:
+            logging.error("Something went wrong during clinical research process")
+            raise e
+
 def main():
     try:
         logging.info("STEP: GOLD")
@@ -148,6 +187,7 @@ def main():
         gold.gold_diagnostics()
         gold.gold_monitoring()
         gold.gold_service_per_day()
+        gold.clinical_research()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
