@@ -185,6 +185,40 @@ class Gold():
             logging.error("Something went wrong during diagnostics copy")
             raise e
 
+    def monitoring_alerts_per_day(self):
+        try:
+            BRADYCARDIA_THRESHOLD = 50
+            TACHYCARDIA_THRESHOLD = 100
+            O2_DESATURATION_THRESHOLD = 92
+            FEVER_THRESHOLD = 38.5
+            
+            logging.info("Processing monitoring alerts per day")
+            self.create_table(
+                    "monitoring_alerts_per_day_gold",
+                    [
+                        {"arg": "date", "type": "Date"},
+                        {"arg": "bradycardia_count", "type": "int"},
+                        {"arg": "tachycardia_count", "type": "int"},
+                        {"arg": "o2_desaturation_count", "type": "int"},
+                        {"arg": "fever_count", "type": "int"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+            INSERT INTO chu.monitoring_alerts_per_day_gold
+                SELECT 
+                    date(ts) AS date,
+                    COUNT(CASE WHEN heart_rate < {BRADYCARDIA_THRESHOLD} THEN 1 END) AS bradycardia_count,
+                    COUNT(CASE WHEN heart_rate > {TACHYCARDIA_THRESHOLD} THEN 1 END) AS tachycardia_count,
+                    COUNT(CASE WHEN spo2 < {O2_DESATURATION_THRESHOLD} THEN 1 END) AS o2_desaturation_count,
+                    COUNT(CASE WHEN temp_c > {FEVER_THRESHOLD} THEN 1 END) AS fever_count
+                FROM chu.monitoring_gold
+                GROUP BY date(ts)
+                ORDER BY date
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during monitoring alerts per day process")
+            raise e
+
     def cohorts_per_diagnostic(self):
         try:
             logging.info("Processing cohorts per diagnostics")
@@ -220,6 +254,7 @@ class Gold():
         try:
             logging.info("PROCESSING CLINICAL RESEARCH")
             self.cohorts_per_diagnostic()
+            self.monitoring_alerts_per_day()
         except Exception as e:
             logging.error("Something went wrong during clinical research process")
             raise e
