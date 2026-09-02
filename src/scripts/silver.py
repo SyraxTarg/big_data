@@ -107,30 +107,30 @@ class Silver():
 
             logging.info("Cleaning patients")
             clickhouse_client.query(f'''
-                DELETE FROM chu.patients_silver WHERE sex NOT IN ('F', 'M')
+                DELETE FROM {self.db}.patients_silver WHERE sex NOT IN ('F', 'M')
             ''')
             clickhouse_client.query(f'''
-                DELETE FROM chu.patients_silver WHERE birth_date > now
+                DELETE FROM {self.db}.patients_silver WHERE birth_date > now
             ''')
 
             logging.info("Cleaning stays")
             clickhouse_client.query(f'''
-                DELETE FROM chu.sejours_silver WHERE discharge_ts < admission_ts
+                DELETE FROM {self.db}.sejours_silver WHERE discharge_ts < admission_ts
             ''')
 
             logging.info("Cleaning monitoring")
             clickhouse_client.query(f'''
-                ALTER TABLE chu.monitoring_silver
+                ALTER TABLE {self.db}.monitoring_silver
                 UPDATE heart_rate = NULL
                 WHERE heart_rate < 20 OR heart_rate > 250
             ''')
             clickhouse_client.query(f'''
-                ALTER TABLE chu.monitoring_silver
+                ALTER TABLE {self.db}.monitoring_silver
                 UPDATE spo2 = NULL
                 WHERE spo2 < 50 OR spo2 > 100
             ''')
             clickhouse_client.query(f'''
-                ALTER TABLE chu.monitoring_silver
+                ALTER TABLE {self.db}.monitoring_silver
                 UPDATE temp_c = NULL
                 WHERE temp_c < 30 OR temp_c > 45
             ''')
@@ -146,30 +146,30 @@ class Silver():
 
             logging.info("Deduplicating patients")
             clickhouse_client.query(f'''
-                OPTIMIZE TABLE chu.patients_silver FINAL DEDUPLICATE BY patient_id
+                OPTIMIZE TABLE {self.db}.patients_silver FINAL DEDUPLICATE BY patient_id
             ''')
 
             logging.info("Deduplicating stays")
             clickhouse_client.query(f'''
-                OPTIMIZE TABLE chu.sejours_silver FINAL DEDUPLICATE BY stay_id
+                OPTIMIZE TABLE {self.db}.sejours_silver FINAL DEDUPLICATE BY stay_id
             ''')
 
             logging.info("Deduplicating monitoring")
             clickhouse_client.query(f'''
-                OPTIMIZE TABLE chu.monitoring_silver FINAL DEDUPLICATE BY patient_id, ts
+                OPTIMIZE TABLE {self.db}.monitoring_silver FINAL DEDUPLICATE BY patient_id, ts
             ''')
 
             logging.info("Deduplicating diagnostics")
             clickhouse_client.query(f'''
-                OPTIMIZE TABLE chu.diagnostics_silver FINAL DEDUPLICATE
+                OPTIMIZE TABLE {self.db}.diagnostics_silver FINAL DEDUPLICATE
             ''')
 
             logging.info("Deduplicating references")
             clickhouse_client.query(f'''
-                OPTIMIZE TABLE chu.cim10_silver FINAL DEDUPLICATE
+                OPTIMIZE TABLE {self.db}.cim10_silver FINAL DEDUPLICATE
             ''')
             clickhouse_client.query(f'''
-                OPTIMIZE TABLE chu.services_silver FINAL DEDUPLICATE
+                OPTIMIZE TABLE {self.db}.services_silver FINAL DEDUPLICATE
             ''')
 
             logging.info("DEDUPLICATING DONE\n")
@@ -183,10 +183,10 @@ class Silver():
 
             logging.info("Deleting cohorts < 5 for stays")
             clickhouse_client.query(f'''
-                DELETE FROM chu.sejours_silver
+                DELETE FROM {self.db}.sejours_silver
                 WHERE service_code IN (
                     SELECT service_code
-                    FROM chu.sejours_silver
+                    FROM {self.db}.sejours_silver
                     GROUP BY service_code
                     HAVING COUNT(DISTINCT patient_id) < {cohort_size_limit}
                 )
@@ -194,28 +194,28 @@ class Silver():
 
             logging.info("Deleting cohorts < 5 for monitoring")
             clickhouse_client.query(f'''
-                DELETE FROM chu.monitoring_silver
+                DELETE FROM {self.db}.monitoring_silver
                 WHERE heart_rate IN (
                     SELECT heart_rate
-                    FROM chu.monitoring_silver
+                    FROM {self.db}.monitoring_silver
                     GROUP BY heart_rate
                     HAVING COUNT(DISTINCT patient_id) < {cohort_size_limit}
                 )
             ''')
             clickhouse_client.query(f'''
-                DELETE FROM chu.monitoring_silver
+                DELETE FROM {self.db}.monitoring_silver
                 WHERE spo2 IN (
                     SELECT spo2
-                    FROM chu.monitoring_silver
+                    FROM {self.db}.monitoring_silver
                     GROUP BY spo2
                     HAVING COUNT(DISTINCT patient_id) < {cohort_size_limit}
                 )
             ''')
             clickhouse_client.query(f'''
-                DELETE FROM chu.monitoring_silver
+                DELETE FROM {self.db}.monitoring_silver
                 WHERE temp_c IN (
                     SELECT temp_c
-                    FROM chu.monitoring_silver
+                    FROM {self.db}.monitoring_silver
                     GROUP BY temp_c
                     HAVING COUNT(DISTINCT patient_id) < {cohort_size_limit}
                 )
@@ -223,10 +223,10 @@ class Silver():
 
             logging.info("Deleting cohorts < 5 for diagnostics")
             clickhouse_client.query(f'''
-                DELETE FROM chu.diagnostics_silver
+                DELETE FROM {self.db}.diagnostics_silver
                 WHERE code_cim10 IN (
                     SELECT code_cim10
-                    FROM chu.diagnostics_silver
+                    FROM {self.db}.diagnostics_silver
                     GROUP BY code_cim10
                     HAVING COUNT(DISTINCT patient_id) < 5
                 )
