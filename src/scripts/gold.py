@@ -112,8 +112,9 @@ class Gold():
                     [
                         {"arg": "age_group", "type": "String"},
                         {"arg": "sex", "type": "String"},
-                        {"arg": "patients_count", "type": "Int"},
+                        {"arg": "patients_count", "type": "Nullable(Int)"},
                         {"arg": "avg_age", "type": "Float"},
+                        {"arg": "code_cim10", "type": "String"},
                     ]
                 )
         except Exception as e:
@@ -125,16 +126,27 @@ class Gold():
         try:
             if age_stop:
                 clickhouse_client.query(f'''
-                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age) SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age FROM (
-                        select patient_id, age('year', birth_date, today()) as age, sex   FROM "chu"."patients_bronze" group by patient_id, sex, age HAVING age BETWEEN {age_start} AND {age_stop}
-                        ) GROUP BY sex;
+                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10)
+                    SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10 FROM (
+                        select patient_id, age('year', birth_date, today()) as age, sex, code_cim10
+                        FROM "chu"."patients_silver"
+                        JOIN chu.diagnostics_silver
+                        ON chu.patients_silver.patient_id = chu.diagnostics_silver.patient_id
+                        GROUP BY patient_id, sex, age, code_cim10 HAVING age BETWEEN {age_start} AND {age_stop}
+                                                ) GROUP BY sex, code_cim10;
                 ''')
             else:
                 clickhouse_client.query(f'''
-                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age) SELECT '>66', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age FROM (
-                        select patient_id, age('year', birth_date, today()) as age, sex   FROM "chu"."patients_bronze" group by patient_id, sex, age HAVING age >= {age_start}
-                        ) GROUP BY sex;
+                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10)
+                    SELECT '>{age_start}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10 FROM (
+                        select patient_id, age('year', birth_date, today()) as age, sex, code_cim10
+                        FROM "chu"."patients_silver"
+                        JOIN chu.diagnostics_silver
+                        ON chu.patients_silver.patient_id = chu.diagnostics_silver.patient_id
+                        GROUP BY patient_id, sex, age, code_cim10 HAVING age >= {age_start}
+                                                ) GROUP BY sex, code_cim10;
                 ''')
+            clickhouse_client.command('alter table chu.age_per_sex_gold update patients_count = null where patients_count < 5;')
         except Exception as e:
             logging.error("Something went wrong during age group insertion")
             raise e
@@ -187,13 +199,13 @@ class Gold():
             clickhouse_client.query(f'''
                 INSERT INTO chu.cohorts_per_diagnostic_gold
                     WITH cohort_sizes AS (
-                        SELECT 
+                        SELECT
                             code_cim10 ,
                             COUNT(DISTINCT patient_id) AS user_count
                         FROM chu.diagnostics_gold
-                        GROUP BY code_cim10 
+                        GROUP BY code_cim10
                     )
-                    SELECT 
+                    SELECT
                         diag.code_cim10 ,
                         cim10.libelle,
                         diag.user_count
