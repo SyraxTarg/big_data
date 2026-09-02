@@ -185,20 +185,24 @@ class Gold():
                     "monitoring_alerts_per_day_gold",
                     [
                         {"arg": "date", "type": "Date"},
-                        {"arg": "bradycardia_count", "type": "int"},
-                        {"arg": "tachycardia_count", "type": "int"},
-                        {"arg": "o2_desaturation_count", "type": "int"},
-                        {"arg": "fever_count", "type": "int"},
+                        {"arg": "total_monitored", "type": "int"},
+                        {"arg": "total_alerts", "type": "int"},
+                        {"arg": "bradycardia_alerts", "type": "int"},
+                        {"arg": "tachycardia_alerts", "type": "int"},
+                        {"arg": "o2_desaturation_alerts", "type": "int"},
+                        {"arg": "fever_alerts", "type": "int"},
                     ]
                 )
             clickhouse_client.query(f'''
             INSERT INTO chu.monitoring_alerts_per_day_gold
                 SELECT 
                     date(ts) AS date,
-                    COUNT(CASE WHEN heart_rate < {BRADYCARDIA_THRESHOLD} THEN 1 END) AS bradycardia_count,
-                    COUNT(CASE WHEN heart_rate > {TACHYCARDIA_THRESHOLD} THEN 1 END) AS tachycardia_count,
-                    COUNT(CASE WHEN spo2 < {O2_DESATURATION_THRESHOLD} THEN 1 END) AS o2_desaturation_count,
-                    COUNT(CASE WHEN temp_c > {FEVER_THRESHOLD} THEN 1 END) AS fever_count
+                    COUNT() AS total_monitored,
+                    COUNT(CASE WHEN  heart_rate < {BRADYCARDIA_THRESHOLD} OR heart_rate > {TACHYCARDIA_THRESHOLD} OR spo2 < {O2_DESATURATION_THRESHOLD} OR temp_c > {FEVER_THRESHOLD} THEN 1 END) AS total_alerts,
+                    COUNT(CASE WHEN heart_rate < {BRADYCARDIA_THRESHOLD} THEN 1 END) AS bradycardia_alerts,
+                    COUNT(CASE WHEN heart_rate > {TACHYCARDIA_THRESHOLD} THEN 1 END) AS tachycardia_alerts,
+                    COUNT(CASE WHEN spo2 < {O2_DESATURATION_THRESHOLD} THEN 1 END) AS o2_desaturation_alerts,
+                    COUNT(CASE WHEN temp_c > {FEVER_THRESHOLD} THEN 1 END) AS fever_alerts
                 FROM chu.monitoring_gold
                 GROUP BY date(ts)
                 ORDER BY date
@@ -233,6 +237,7 @@ class Gold():
                         diag.user_count
                     FROM cohort_sizes diag
                     INNER JOIN chu.cim10_gold cim10 ON cim10.code_cim10 = diag.code_cim10
+                    ORDER BY diag.user_count DESC
             ''')
         except Exception as e:
             logging.error("Something went wrong during cohorts per diagnostics process")
