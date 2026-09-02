@@ -66,9 +66,9 @@ def copy_tables():
                 CREATE TABLE IF NOT EXISTS chu.monitoring_silver (
                     patient_id String,
                     ts DateTime,
-                    heart_rate Int,
-                    spo2 Int,
-                    temp_c Float,
+                    heart_rate Nullable(Int),
+                    spo2 Nullable(Int),
+                    temp_c Nullable(Float),
                     inserted_at DateTime,
                     data_path String
                 )
@@ -130,11 +130,19 @@ def main():
 
     logging.info("Cleaning monitoring")
     clickhouse_client.query(f'''
-        DELETE FROM chu.monitoring_silver
-        WHERE
-        heart_rate < 20 OR heart_rate > 250
-        OR spo2 < 50 OR spo2 > 100
-        OR temp_c < 30 OR temp_c > 45
+        ALTER TABLE chu.monitoring_silver
+        UPDATE heart_rate = NULL
+        WHERE heart_rate < 20 OR heart_rate > 250
+    ''')
+    clickhouse_client.query(f'''
+        ALTER TABLE chu.monitoring_silver
+        UPDATE spo2 = NULL
+        WHERE spo2 < 50 OR spo2 > 100
+    ''')
+    clickhouse_client.query(f'''
+        ALTER TABLE chu.monitoring_silver
+        UPDATE temp_c = NULL
+        WHERE temp_c < 30 OR temp_c > 45
     ''')
 
     logging.info("Deduplicating monitoring")
