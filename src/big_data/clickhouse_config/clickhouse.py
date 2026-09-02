@@ -10,3 +10,6 @@ client = clickhouse_connect.get_client(
     username=os.getenv("CLICKHOUSE_USERNAME"),
     password=os.getenv("CLICKHOUSE_USERNAME")
 )
+
+def get_db_name():
+    return os.getenv("CLICKHOUSE_DB")

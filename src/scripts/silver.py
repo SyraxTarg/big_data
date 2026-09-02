@@ -1,11 +1,11 @@
-from big_data.clickhouse_config.clickhouse import client as clickhouse_client
+from big_data.clickhouse_config.clickhouse import get_db_name, client as clickhouse_client
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class Silver():
-    def __init__(self, database):
-        self.db = database
+    def __init__(self):
+        self.db = get_db_name()
 
     def copy_table_generic(self, table_name):
         try:
@@ -240,7 +240,7 @@ def main():
     try:
         logging.info("STEP : SILVER\n")
 
-        silver = Silver(database="chu")
+        silver = Silver()
         COHORT_SIZE_LIMIT = 5
 
         silver.copy_tables()

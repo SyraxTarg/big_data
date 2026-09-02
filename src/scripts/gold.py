@@ -1,12 +1,12 @@
-from big_data.clickhouse_config.clickhouse import client as clickhouse_client
+from big_data.clickhouse_config.clickhouse import get_db_name, client as clickhouse_client
 import logging
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 class Gold():
 
-    def __init__(self, database):
-        self.db = database
+    def __init__(self):
+        self.db = get_db_name()
 
     def create_table(self, table_name, args: list):
             try:
@@ -353,7 +353,7 @@ class Gold():
 def main():
     try:
         logging.info("STEP: GOLD")
-        gold = Gold("chu")
+        gold = Gold()
         gold.gold_stays()
         gold.gold_patients()
         gold.gold_cim10()

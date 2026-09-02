@@ -7,7 +7,7 @@ import csv
 import os
 from datetime import datetime
 import logging
-from big_data.clickhouse_config.clickhouse import client as clickhouse_client
+from big_data.clickhouse_config.clickhouse import get_db_name, client as clickhouse_client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info("ADDING DATA TO CLICKHOUSE")
@@ -19,8 +19,8 @@ class referentials(Enum):
 
 class Bronze():
 
-    def __init__(self, database):
-         self.db = database
+    def __init__(self):
+         self.db = get_db_name()
 
 
     def create_table(self, table_name, args: list):
@@ -243,7 +243,7 @@ class Bronze():
 def main():
     try:
         logging.info("STEP : BRONZE")
-        bronze = Bronze(database="chu")
+        bronze = Bronze()
         bronze.creating_stays_table("lake/sejours")
         bronze.creating_patients_table("lake/patients")
         bronze.creating_referentials_tables("lake/referentiels", referentials.CIM10)
