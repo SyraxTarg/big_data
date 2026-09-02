@@ -123,7 +123,7 @@ def main():
             SELECT service_code
             FROM chu.sejours_silver
             GROUP BY service_code
-            HAVING COUNT(DISTINCT patient_id) < 1580
+            HAVING COUNT(DISTINCT patient_id) < {COHORT_SIZE_LIMIT}
         )
     ''')
 
