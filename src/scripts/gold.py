@@ -1,5 +1,6 @@
 from big_data.clickhouse_config.clickhouse import client as clickhouse_client
 import logging
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 class Gold():
@@ -103,6 +104,41 @@ class Gold():
             logging.error("Something went wrong during services copy")
             raise e
 
+    def gold_create_age_per_sex(self):
+        logging.info("CREATING AGE GROUP")
+        try:
+            self.create_table(
+                    "age_per_sex_gold",
+                    [
+                        {"arg": "age_group", "type": "String"},
+                        {"arg": "sex", "type": "String"},
+                        {"arg": "patients_count", "type": "Int"},
+                        {"arg": "avg_age", "type": "Float"},
+                    ]
+                )
+        except Exception as e:
+            logging.error("Something went wrong during services copy")
+            raise e
+
+    def gold_insert_age_per_sex(self, age_start: int, age_stop: Optional[int] = None):
+        logging.info(f'INSERTING AGE GROUPS {age_start}-{age_stop}')
+        try:
+            if age_stop:
+                clickhouse_client.query(f'''
+                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age) SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age FROM (
+                        select patient_id, age('year', birth_date, today()) as age, sex   FROM "chu"."patients_bronze" group by patient_id, sex, age HAVING age BETWEEN {age_start} AND {age_stop}
+                        ) GROUP BY sex;
+                ''')
+            else:
+                clickhouse_client.query(f'''
+                    INSERT INTO chu.age_per_sex_gold (age_group, sex, patients_count, avg_age) SELECT '>66', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age FROM (
+                        select patient_id, age('year', birth_date, today()) as age, sex   FROM "chu"."patients_bronze" group by patient_id, sex, age HAVING age >= {age_start}
+                        ) GROUP BY sex;
+                ''')
+        except Exception as e:
+            logging.error("Something went wrong during age group insertion")
+            raise e
+
     def gold_monitoring(self):
         logging.info("COPYING MONITORING")
         try:
@@ -148,6 +184,13 @@ def main():
         gold.gold_diagnostics()
         gold.gold_monitoring()
         gold.gold_service_per_day()
+        gold.gold_create_age_per_sex()
+        gold.gold_insert_age_per_sex(0, 10)
+        gold.gold_insert_age_per_sex(11, 17)
+        gold.gold_insert_age_per_sex(18, 25)
+        gold.gold_insert_age_per_sex(26, 39)
+        gold.gold_insert_age_per_sex(40, 65)
+        gold.gold_insert_age_per_sex(66)
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
