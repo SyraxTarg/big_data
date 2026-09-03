@@ -107,6 +107,32 @@ class Silver():
         except Exception as e:
             raise e
 
+    def copy_actes_table(self):
+            try:
+                logging.info("Copying acts")
+                clickhouse_client.command(f'DROP TABLE IF EXISTS {self.db}.actes_silver')
+                clickhouse_client.command(f'''
+                            CREATE TABLE IF NOT EXISTS {self.db}.actes_silver (
+                                patient_id String,
+                                code_ccam String,
+                                acte_ts String,
+                                inserted_at DateTime,
+                                data_path String
+                            )
+                            ENGINE = MergeTree()
+                            ORDER BY patient_id
+                        ''')
+                clickhouse_client.command(f'''
+                            INSERT INTO {self.db}.actes_silver
+                                SELECT p.patient_id AS patient_id, a.code_ccam AS code_ccam, a.acte_ts AS acte_ts, a.inserted_at AS inserted_at, a.data_path AS data_path
+                                FROM {self.db}.actes_bronze a
+                                JOIN {self.db}.sejours_bronze s
+                                ON a.stay_id = s.stay_id
+                                JOIN {self.db}.patients_bronze p
+                                ON s.patient_id = p.patient_id
+                        ''')
+            except Exception as e:
+                raise e
 
     def copy_tables(self):
         try:
@@ -116,7 +142,7 @@ class Silver():
             self.copy_table_generic('sejours')
 
             logging.info("Copying acts")
-            self.copy_table_generic('actes')
+            self.copy_actes_table()
 
             logging.info("Copying monitoring")
             self.copy_monitoring_table()
