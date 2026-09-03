@@ -271,15 +271,14 @@ class Gold():
             self.create_table(
                     "actes_per_service_gold",
                     [
-                        {"arg": "actes_count", "type": "int"},
-                        {"arg": "service_code", "type": "String"},
                         {"arg": "service_label", "type": "String"},
+                        {"arg": "actes_count", "type": "int"}
                     ]
             )
 
             clickhouse_client.query(f'''
                     INSERT INTO {self.db}.actes_per_service_gold
-                        SELECT count(actes.acte_ts) as actes_count, services.service_code as service_code, services.service_label as service_label
+                        SELECT services.service_label as service_label, count(actes.acte_ts) as actes_count
                         FROM {self.db}.sejours_silver sejours
                         JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
                         JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
@@ -373,18 +372,16 @@ class Gold():
             self.create_table(
                     "amount_charged_per_service",
                     [
-                        {"arg": "amount_charged_euros", "type": "int"},
-                        {"arg": "service_code", "type": "String"},
                         {"arg": "service_label", "type": "String"},
+                        {"arg": "amount_charged_euros", "type": "int"}
                     ]
             )
 
             clickhouse_client.query(f'''
                 INSERT INTO {self.db}.amount_charged_per_service
                         SELECT
-                            sum(ccam.tarif_euros) as amount_charged_euros,
-                            services.service_code as service_code,
-                            services.service_label as service_label
+                            services.service_label as service_label,
+                            sum(ccam.tarif_euros) as amount_charged_euros
                         FROM {self.db}.sejours_silver sejours
                         JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
                         JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
