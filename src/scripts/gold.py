@@ -121,7 +121,7 @@ class Gold():
                     )
                 clickhouse_client.query(f'''
                     INSERT INTO {self.db}.categories_per_day_gold
-                    SELECT categorie, COUNT(date(admission_ts)) AS patients_count, date(admission_ts) AS date
+                    SELECT categorie, COUNT(date(admission_ts)) AS stay_count, date(admission_ts) AS date
                     FROM "{self.db}"."services_silver" JOIN "{self.db}"."sejours_silver"
                     ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
                     GROUP BY categorie, date
