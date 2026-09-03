@@ -106,8 +106,8 @@ class Gold():
         except Exception as e:
             logging.error("Something went wrong during services copy")
             raise e
-        
-        
+
+
     def gold_service_categories_per_day(self):
             logging.info("PATIENTS COUNT PER DAY BY CATEGORIES")
             try:
@@ -293,6 +293,9 @@ class Gold():
         except Exception as e:
             logging.error("Something went wrong during actes per service process")
             raise e
+
+
+
 
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
@@ -484,6 +487,7 @@ def main():
         gold.gold_service_categories_per_day()
         gold.gold_actes_per_service()
         gold.gold_avg_actes_per_stay()
+        gold.gold_actes_per_bed()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
