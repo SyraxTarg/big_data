@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 directory_source = "file_storage"
 directory_lake = "lake"
 last_lake_generation_path = "config/last_lake_generation.csv"
-ALLOWED_RESOURCES = ["diagnostics", "monitoring", "patients", "referentiels", "sejours"]
+ALLOWED_RESOURCES = ["diagnostics", "monitoring", "patients", "referentiels", "sejours", "actes"]
 
 def if_not_exist_create_it(path) -> None:
     logging.info(f'Checking if {path} exists')
