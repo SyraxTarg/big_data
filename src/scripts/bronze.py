@@ -244,10 +244,10 @@ def main():
     try:
         logging.info("STEP : BRONZE")
         bronze = Bronze()
-        bronze.creating_stays_table("lake/sejours")
         bronze.creating_patients_table("lake/patients")
         bronze.creating_referentials_tables("lake/referentiels", referentials.CIM10)
         bronze.creating_referentials_tables("lake/referentiels", referentials.SERVICES)
+        bronze.creating_stays_table("lake/sejours")
         bronze.creating_diagnostics_tables("lake/diagnostics")
         bronze.creating_monitoring_tables("lake/monitoring")
         logging.info("STEP BRONZE COMPLETED")

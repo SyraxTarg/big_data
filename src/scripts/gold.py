@@ -359,10 +359,10 @@ def main():
     try:
         logging.info("STEP: GOLD")
         gold = Gold()
-        gold.gold_stays()
         gold.gold_patients()
         gold.gold_cim10()
         gold.gold_services()
+        gold.gold_stays()
         gold.gold_diagnostics()
         gold.gold_monitoring()
         gold.gold_service_per_day()
