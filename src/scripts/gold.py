@@ -115,7 +115,7 @@ class Gold():
                         "categories_per_day_gold",
                         [
                             {"arg": "categorie", "type": "String"},
-                            {"arg": "patients_count", "type": "Int"},
+                            {"arg": "stay_count", "type": "Int"},
                             {"arg": "date", "type": "Date"},
                         ]
                     )
