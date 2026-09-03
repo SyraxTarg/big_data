@@ -115,18 +115,22 @@ class Silver():
             logging.info("Copying stays")
             self.copy_table_generic('sejours')
 
+            logging.info("Copying acts")
+            self.copy_table_generic('actes')
+
+            logging.info("Copying monitoring")
+            self.copy_monitoring_table()
+
+            logging.info("Copying diagnostics")
+            self.copy_diagnostics_table()
+
             logging.info("Copying patients")
             self.copy_table_generic('patients')
 
             logging.info("Copying referentials")
             self.copy_table_generic('cim10')
             self.copy_services_table()
-
-            self.copy_diagnostics_table()
-            self.copy_monitoring_table()
-
             self.copy_table_generic('ccam')
-            self.copy_table_generic('actes')
 
             logging.info("COPY DONE\n")
         except Exception as e:
