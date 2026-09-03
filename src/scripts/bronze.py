@@ -187,8 +187,8 @@ class Bronze():
                                         ccam.append(row)
                                 ccam.pop(0)
                                 clickhouse_client.insert(f'chu.ccam_bronze', ccam)
-                                
-                
+
+
                 case referentials.DESCRIPTION_SERVICE:
                     self.create_table(
                         "description_service_bronze",

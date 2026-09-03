@@ -49,9 +49,9 @@ class Silver():
     def copy_monitoring_table(self):
         try:
             logging.info("Copying monitoring")
-            clickhouse_client.command(f'DROP TABLE IF EXISTS chu.monitoring_silver')
+            clickhouse_client.command(f'DROP TABLE IF EXISTS {self.db}.monitoring_silver')
             clickhouse_client.command(f'''
-                        CREATE TABLE IF NOT EXISTS chu.monitoring_silver (
+                        CREATE TABLE IF NOT EXISTS {self.db}.monitoring_silver (
                             patient_id String,
                             ts DateTime,
                             heart_rate Nullable(Int),
@@ -79,6 +79,35 @@ class Silver():
         except Exception as e:
             raise e
 
+    def copy_services_table(self):
+        try:
+            logging.info("Copying services")
+            clickhouse_client.command(f'DROP TABLE IF EXISTS {self.db}.services_silver')
+            clickhouse_client.command(f'''
+                        CREATE TABLE IF NOT EXISTS {self.db}.services_silver (
+                            service_code String,
+                            service_label String,
+                            categorie String,
+                            capacite_lits String,
+                            pole String,
+                            inserted_at DateTime,
+                            data_path String,
+                            data_path_description String
+                        )
+                        ENGINE = MergeTree()
+                        ORDER BY service_code
+                    ''')
+            clickhouse_client.command(f'''
+                        INSERT INTO {self.db}.services_silver
+                            SELECT service_code, service_label, categorie, capacite_lits, pole, inserted_at, s.data_path, d.data_path AS data_path_description
+                            FROM "{self.db}"."services_bronze" s
+                            JOIN {self.db}.description_service_bronze d
+                            ON {self.db}.services_bronze.service_code = {self.db}.description_service_bronze.service_code
+                    ''')
+        except Exception as e:
+            raise e
+
+
     def copy_tables(self):
         try:
             logging.info("COPYING TABLES FROM BRONZE")
@@ -91,10 +120,13 @@ class Silver():
 
             logging.info("Copying referentials")
             self.copy_table_generic('cim10')
-            self.copy_table_generic('services')
+            self.copy_services_table()
 
             self.copy_diagnostics_table()
             self.copy_monitoring_table()
+
+            self.copy_table_generic('ccam')
+            self.copy_table_generic('actes')
 
             logging.info("COPY DONE\n")
         except Exception as e:
