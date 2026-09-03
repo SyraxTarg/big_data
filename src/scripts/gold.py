@@ -109,7 +109,7 @@ class Gold():
 
 
     def gold_service_categories_per_day(self):
-            logging.info("PATIENTS COUNT PER DAY BY CATEGORIES")
+            logging.info("STAY COUNT PER DAY BY CATEGORIES")
             try:
                 self.create_table(
                         "categories_per_day_gold",
@@ -128,9 +128,31 @@ class Gold():
                     ORDER BY date ASC;
                 ''')
             except Exception as e:
-                logging.error("Something went wrong during patient count per categories")
+                logging.error("Something went wrong during stay count per categories per day")
                 raise e
 
+
+    def gold_service_categories(self):
+            logging.info("STAY COUNT CATEGORIES")
+            try:
+                self.create_table(
+                        "categories_stay_gold",
+                        [
+                            {"arg": "categorie", "type": "String"},
+                            {"arg": "stay_count", "type": "Int"},
+                        ]
+                    )
+                clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.categories_stay_gold
+                    SELECT categorie, COUNT(date(admission_ts)) AS stay_count
+                    FROM "{self.db}"."services_silver" JOIN "{self.db}"."sejours_silver"
+                    ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
+                    GROUP BY categorie
+                    ORDER BY stay_count ASC;
+                ''')
+            except Exception as e:
+                logging.error("Something went wrong during patient count per categories")
+                raise e
 
     def gold_service_categories_dms(self):
             logging.info("DMS BY CATEGORIES")
@@ -568,6 +590,7 @@ def main():
         gold.gold_actes_per_bed()
         gold.gold_actes_per_ccam()
         gold.gold_amount_charged_per_service()
+        gold.gold_service_categories()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
