@@ -206,6 +206,7 @@ class Gold():
                         {"arg": "patients_count", "type": "Nullable(Int)"},
                         {"arg": "avg_age", "type": "Float"},
                         {"arg": "code_cim10", "type": "String"},
+                        {"arg": "libelle_cim10", "type": "String"},
                     ]
                 )
         except Exception as e:
@@ -217,25 +218,29 @@ class Gold():
         try:
             if age_stop:
                 clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10)
-                    SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10 FROM (
-                        select patient_id, age('year', birth_date, today()) as age, sex, code_cim10
-                        FROM "{self.db}"."patients_silver"
-                        JOIN {self.db}.diagnostics_silver
-                        ON {self.db}.patients_silver.patient_id = {self.db}.diagnostics_silver.patient_id
-                        GROUP BY patient_id, sex, age, code_cim10 HAVING age BETWEEN {age_start} AND {age_stop}
-                                                ) GROUP BY sex, code_cim10;
+                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10, libelle_cim10)
+                    SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10, libelle FROM (
+                        select p.patient_id AS patient_id, age('year', birth_date, today()) as age, p.sex AS sex, d.code_cim10 AS code_cim10, c.libelle
+                        FROM "{self.db}"."patients_silver" p
+                        JOIN {self.db}.diagnostics_silver d
+                        ON p.patient_id = d.patient_id
+                        JOIN {self.db}.cim10_silver c
+                        ON d.code_cim10 = c.code_cim10
+                        GROUP BY p.patient_id, p.sex, age, d.code_cim10, c.libelle HAVING age BETWEEN {age_start} AND {age_stop}
+                                                ) GROUP BY sex, code_cim10, libelle;
                 ''')
             else:
                 clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10)
-                    SELECT '>{age_start}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10 FROM (
-                        select patient_id, age('year', birth_date, today()) as age, sex, code_cim10
-                        FROM "{self.db}"."patients_silver"
-                        JOIN {self.db}.diagnostics_silver
-                        ON {self.db}.patients_silver.patient_id = {self.db}.diagnostics_silver.patient_id
-                        GROUP BY patient_id, sex, age, code_cim10 HAVING age >= {age_start}
-                                                ) GROUP BY sex, code_cim10;
+                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10, libelle_cim10)
+                    SELECT '>{age_start}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10, libelle FROM (
+                        select p.patient_id AS patient_id, age('year', birth_date, today()) as age, p.sex AS sex, d.code_cim10 AS code_cim10, c.libelle
+                        FROM "{self.db}"."patients_silver" p
+                        JOIN {self.db}.diagnostics_silver d
+                        ON p.patient_id = d.patient_id
+                        JOIN {self.db}.cim10_silver c
+                        ON d.code_cim10 = c.code_cim10
+                        GROUP BY p.patient_id, p.sex, age, d.code_cim10, c.libelle HAVING age >= {age_start}
+                                                ) GROUP BY sex, code_cim10, libelle;
                 ''')
             clickhouse_client.command(f'alter table {self.db}.age_per_sex_gold update patients_count = null where patients_count < 5;')
         except Exception as e:
