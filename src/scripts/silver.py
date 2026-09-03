@@ -88,7 +88,7 @@ class Silver():
                             service_code String,
                             service_label String,
                             categorie String,
-                            capacite_lits String,
+                            capacite_lits Int,
                             pole String,
                             inserted_at DateTime,
                             data_path String,

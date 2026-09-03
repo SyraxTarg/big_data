@@ -64,6 +64,9 @@ class Gold():
                     [
                         {"arg": "service_code", "type": "String"},
                         {"arg": "service_label", "type": "String"},
+                        {"arg": "categorie", "type": "String"},
+                        {"arg": "capacite_lits", "type": "Int"},
+                        {"arg": "pole", "type": "String"},
                         {"arg": "dms", "type": "Float64"},
                         {"arg": "inserted_at", "type": "DateTime"},
                         {"arg": "data_path", "type": "String"},
@@ -71,10 +74,10 @@ class Gold():
                 )
             clickhouse_client.query(f'''
                 INSERT INTO {self.db}.services_gold
-                SELECT service_code, service_label, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS, inserted_at, data_path
+                SELECT service_code, service_label, categorie, capacite_lits, pole, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS, inserted_at, data_path
                 FROM "{self.db}"."services_silver"
                 JOIN "{self.db}"."sejours_silver" ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
-                GROUP BY service_code, service_label, inserted_at, data_path ;
+                GROUP BY service_code, service_label, categorie, capacite_lits, pole, inserted_at, data_path ;
             ''')
         except Exception as e:
             logging.error("Something went wrong during services copy")
@@ -103,7 +106,52 @@ class Gold():
         except Exception as e:
             logging.error("Something went wrong during services copy")
             raise e
+        
+        
+    def gold_service_categories_per_day(self):
+            logging.info("PATIENTS COUNT PER DAY BY CATEGORIES")
+            try:
+                self.create_table(
+                        "categories_per_day_gold",
+                        [
+                            {"arg": "categorie", "type": "String"},
+                            {"arg": "patients_count", "type": "Int"},
+                            {"arg": "date", "type": "Date"},
+                        ]
+                    )
+                clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.categories_per_day_gold
+                    SELECT categorie, COUNT(date(admission_ts)) AS patients_count, date(admission_ts) AS date
+                    FROM "{self.db}"."services_silver" JOIN "{self.db}"."sejours_silver"
+                    ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
+                    GROUP BY categorie, date
+                    ORDER BY date ASC;
+                ''')
+            except Exception as e:
+                logging.error("Something went wrong during patient count per categories")
+                raise e
 
+
+    def gold_service_categories_dms(self):
+            logging.info("DMS BY CATEGORIES")
+            try:
+                self.create_table(
+                        "categories_dms_gold",
+                        [
+                            {"arg": "categorie", "type": "String"},
+                            {"arg": "DMS", "type": "Float64"},
+                        ]
+                    )
+                clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.categories_dms_gold
+                    SELECT categorie, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS
+                        FROM "{self.db}"."services_silver"
+                        JOIN "{self.db}"."sejours_silver" ON "{self.db}"."sejours_silver"."service_code" = "{self.db}"."services_silver"."service_code"
+                        GROUP BY categorie;
+                ''')
+            except Exception as e:
+                logging.error("Something went wrong during categories DMS")
+                raise e
 
     def gold_readmission_per_services(self):
         logging.info("READMISSIONS PER SERVICE")
@@ -381,6 +429,8 @@ def main():
         gold.gold_readmission_per_services()
         gold.gold_readmission_total()
         gold.clinical_research()
+        gold.gold_service_categories_dms()
+        gold.gold_service_categories_per_day()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
