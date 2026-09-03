@@ -115,7 +115,7 @@ class Silver():
                             CREATE TABLE IF NOT EXISTS {self.db}.actes_silver (
                                 patient_id String,
                                 code_ccam String,
-                                acte_ts String,
+                                acte_ts DateTime,
                                 inserted_at DateTime,
                                 data_path String
                             )

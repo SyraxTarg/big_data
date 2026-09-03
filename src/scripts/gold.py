@@ -268,6 +268,32 @@ class Gold():
             logging.error("Something went wrong during actes per service process")
             raise e
 
+    def gold_avg_actes_per_stay(self):
+        logging.info("Processing average actes per stay")
+        try:
+            self.create_table(
+                    "avg_actes_per_stay",
+                    [
+                        {"arg": "avg_actes_count", "type": "float"},
+                    ]
+            )
+
+            clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.avg_actes_per_stay
+                        WITH cte AS (
+                            SELECT count(acte_ts) as actes_count, stay_id
+                            FROM {self.db}.sejours_silver sejours
+                            JOIN {self.db}.actes_silver actes ON actes.patient_id = sejours.patient_id
+                            WHERE actes.acte_ts BETWEEN sejours.admission_ts AND sejours.discharge_ts
+                            GROUP BY stay_id
+                        )
+                        SELECT AVG(actes_count) AS avg_actes_count
+                        FROM cte
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during actes per service process")
+            raise e
+
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
         try:
@@ -457,6 +483,7 @@ def main():
         gold.gold_service_categories_dms()
         gold.gold_service_categories_per_day()
         gold.gold_actes_per_service()
+        gold.gold_avg_actes_per_stay()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
