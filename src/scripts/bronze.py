@@ -15,6 +15,8 @@ logging.info("ADDING DATA TO CLICKHOUSE")
 class referentials(Enum):
     CIM10 = "cim10"
     SERVICES = "services"
+    CCAM = "ccam"
+    DESCRIPTION_SERVICE = "description_service"
 
 
 class Bronze():
@@ -162,6 +164,55 @@ class Bronze():
                                 clickhouse_client.insert(f'chu.cim10_bronze', cim10)
 
 
+                case referentials.CCAM:
+                    self.create_table(
+                        "ccam_bronze",
+                        [
+                            {"arg": "code_ccam", "type": "String"},
+                            {"arg": "libelle", "type": "String"},
+                            {"arg": "tarif_euros", "type": "Float64"},
+                            {"arg": "inserted_at", "type": "DateTime"},
+                            {"arg": "data_path", "type": "String"},
+                        ]
+                    )
+                    for date_dir in os.listdir(f'{directory}'):
+                        ccam = []
+                        for file in os.listdir(f'{directory}/{date_dir}'):
+                            if file == "ccam.csv":
+                                with open(f'{directory}/{date_dir}/{file}') as file_obj:
+                                    reader_obj_referentiels = csv.reader(file_obj)
+                                    for row in reader_obj_referentiels:
+                                        row.append(datetime.now())
+                                        row.append(f'{directory}/{date_dir}/{file}')
+                                        ccam.append(row)
+                                ccam.pop(0)
+                                clickhouse_client.insert(f'chu.ccam_bronze', ccam)
+                                
+                
+                case referentials.DESCRIPTION_SERVICE:
+                    self.create_table(
+                        "description_service_bronze",
+                        [
+                            {"arg": "service_code", "type": "String"},
+                            {"arg": "categorie", "type": "String"},
+                            {"arg": "capacite_lits", "type": "Int"},
+                            {"arg": "pole", "type": "String"},
+                            {"arg": "inserted_at", "type": "DateTime"},
+                            {"arg": "data_path", "type": "String"},
+                        ]
+                    )
+                    for date_dir in os.listdir(f'{directory}'):
+                        description_service = []
+                        for file in os.listdir(f'{directory}/{date_dir}'):
+                            if file == "description_service.csv":
+                                with open(f'{directory}/{date_dir}/{file}') as file_obj:
+                                    reader_obj_referentiels = csv.reader(file_obj)
+                                    for row in reader_obj_referentiels:
+                                        row.append(datetime.now())
+                                        row.append(f'{directory}/{date_dir}/{file}')
+                                        description_service.append(row)
+                                description_service.pop(0)
+                                clickhouse_client.insert(f'chu.description_service_bronze', description_service)
                 case _:
                     raise Exception("Unknown referential")
         except Exception as e:
@@ -239,6 +290,39 @@ class Bronze():
             logging.error("Something went wrong during Monotoring table creation.")
             raise e
 
+    def creating_acts_tables(self, directory):
+        try:
+            logging.info("ADDING ACTS")
+            self.create_table(
+                "actes_bronze",
+                [
+                    {"arg": "stay_id", "type": "String"},
+                    {"arg": "code_ccam", "type": "String"},
+                    {"arg": "acte_ts", "type": "DateTime"},
+                    {"arg": "inserted_at", "type": "DateTime"},
+                    {"arg": "data_path", "type": "String"},
+                ]
+            )
+
+            for date_dir in os.listdir(f'{directory}'):
+                    acts = []
+                    for file in os.listdir(f'{directory}/{date_dir}'):
+                        parquet_file = pd.read_parquet(f'{directory}/{date_dir}/actes.parquet')
+                        for i in range(len(parquet_file)):
+                            acts.append(
+                                [
+                                    parquet_file.get("stay_id")[i],
+                                    parquet_file.get("code_ccam")[i],
+                                    parquet_file.get("acte_ts")[i],
+                                    datetime.now(),
+                                    f'{directory}/{date_dir}/{file}'
+                                ]
+                            )
+
+                        clickhouse_client.insert(f'chu.actes_bronze', acts)
+        except Exception as e:
+            logging.error("Something went wrong during Acts table creation.")
+            raise e
 
 def main():
     try:
@@ -250,6 +334,10 @@ def main():
         bronze.creating_stays_table("lake/sejours")
         bronze.creating_diagnostics_tables("lake/diagnostics")
         bronze.creating_monitoring_tables("lake/monitoring")
+
+        bronze.creating_acts_tables("lake/actes")
+        bronze.creating_referentials_tables("lake/referentiels", referentials.CCAM)
+        bronze.creating_referentials_tables("lake/referentiels", referentials.DESCRIPTION_SERVICE)
         logging.info("STEP BRONZE COMPLETED")
     except Exception as e:
         raise e
