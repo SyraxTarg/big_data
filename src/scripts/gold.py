@@ -345,6 +345,35 @@ class Gold():
             logging.error("Something went wrong during actes per bed capacity")
             raise e
 
+    def gold_amount_charged_per_service(self):
+        logging.info("Processing amount charged per service")
+        try:
+            self.create_table(
+                    "amount_charged_per_service",
+                    [
+                        {"arg": "amount_charged_euros", "type": "int"},
+                        {"arg": "service_code", "type": "String"},
+                        {"arg": "service_label", "type": "String"},
+                    ]
+            )
+
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.amount_charged_per_service
+                        SELECT
+                            sum(ccam.tarif_euros) as amount_charged_euros,
+                            services.service_code as service_code,
+                            services.service_label as service_label
+                        FROM {self.db}.sejours_silver sejours
+                        JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
+                        JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
+                        JOIN {self.db}.services_silver services ON services.service_code = sejours.service_code
+                        JOIN {self.db}.ccam_silver ccam ON ccam.code_ccam = actes.code_ccam
+                        GROUP BY service_code, service_label
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during aount charged per service process")
+            raise e
+
 
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
