@@ -243,6 +243,31 @@ class Gold():
             logging.error("Something went wrong during readmissions total")
             raise e
 
+    def gold_actes_per_service(self):
+        logging.info("Processing actes per service")
+        try:
+            self.create_table(
+                    "actes_per_service_gold",
+                    [
+                        {"arg": "actes_count", "type": "int"},
+                        {"arg": "service_code", "type": "String"},
+                        {"arg": "service_label", "type": "String"},
+                    ]
+            )
+
+            clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.actes_per_service_gold
+                        SELECT count(actes.acte_ts) as actes_count, services.service_code as service_code, services.service_label as service_label
+                        FROM {self.db}.sejours_silver sejours
+                        JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
+                        JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
+                        JOIN {self.db}.services_silver services ON services.service_code = sejours.service_code
+                        GROUP BY service_code, service_label
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during actes per service process")
+            raise e
+
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
         try:
@@ -431,6 +456,7 @@ def main():
         gold.clinical_research()
         gold.gold_service_categories_dms()
         gold.gold_service_categories_per_day()
+        gold.gold_actes_per_service()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
