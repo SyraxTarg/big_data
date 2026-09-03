@@ -296,6 +296,55 @@ class Gold():
 
 
 
+    def gold_actes_per_ccam(self):
+        logging.info("Processing actes per ccam")
+        try:
+            self.create_table(
+                    "actes_per_ccam",
+                    [
+                        {"arg": "libelle", "type": "String"},
+                        {"arg": "code_ccam", "type": "String"},
+                        {"arg": "actes_count", "type": "int"},
+                    ]
+            )
+
+            clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.actes_per_ccam
+                        SELECT ccam.libelle AS libelle, ccam.code_ccam AS code_ccam, count(actes.acte_ts) AS actes_count
+                        FROM {self.db}.actes_silver actes
+                        JOIN {self.db}.ccam_silver ccam ON ccam.code_ccam = actes.code_ccam
+                        GROUP BY ccam.libelle, ccam.code_ccam
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during actes per ccam process")
+            raise e
+
+
+    def gold_actes_per_bed(self):
+        logging.info("Processing number of acts per bud capacity")
+        try:
+            self.create_table(
+                    "actes_per_bed",
+                    [
+                        {"arg": "service_label", "type": "String"},
+                        {"arg": "capacite_lits", "type": "Int"},
+                        {"arg": "nb_actes", "type": "Int"},
+                    ]
+            )
+
+            clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.actes_per_bed
+                         SELECT services.service_label, services.capacite_lits, COUNT(*) AS nb_actes
+                            FROM {self.db}.sejours_silver sejours
+                            JOIN {self.db}.actes_silver actes ON actes.patient_id = sejours.patient_id
+                            JOIN {self.db}.services_silver services ON services.service_code = sejours.service_code
+                            WHERE actes.acte_ts BETWEEN sejours.admission_ts AND sejours.discharge_ts
+                            GROUP BY services.service_label, services.capacite_lits
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during actes per bed capacity")
+            raise e
+
 
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
@@ -488,6 +537,7 @@ def main():
         gold.gold_actes_per_service()
         gold.gold_avg_actes_per_stay()
         gold.gold_actes_per_bed()
+        gold.gold_actes_per_ccam()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
