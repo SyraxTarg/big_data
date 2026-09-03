@@ -226,12 +226,20 @@ class Silver():
                 OPTIMIZE TABLE {self.db}.diagnostics_silver FINAL DEDUPLICATE
             ''')
 
+            logging.info("Deduplicating actes")
+            clickhouse_client.query(f'''
+                OPTIMIZE TABLE {self.db}.actes_silver FINAL DEDUPLICATE
+            ''')
+
             logging.info("Deduplicating references")
             clickhouse_client.query(f'''
                 OPTIMIZE TABLE {self.db}.cim10_silver FINAL DEDUPLICATE
             ''')
             clickhouse_client.query(f'''
                 OPTIMIZE TABLE {self.db}.services_silver FINAL DEDUPLICATE
+            ''')
+            clickhouse_client.query(f'''
+                OPTIMIZE TABLE {self.db}.ccam_silver FINAL DEDUPLICATE BY code_ccam
             ''')
 
             logging.info("DEDUPLICATING DONE\n")
