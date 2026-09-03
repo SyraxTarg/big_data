@@ -106,8 +106,8 @@ class Gold():
         except Exception as e:
             logging.error("Something went wrong during services copy")
             raise e
-        
-        
+
+
     def gold_service_categories_per_day(self):
             logging.info("PATIENTS COUNT PER DAY BY CATEGORIES")
             try:
@@ -294,6 +294,8 @@ class Gold():
             logging.error("Something went wrong during actes per service process")
             raise e
 
+
+
     def gold_actes_per_ccam(self):
         logging.info("Processing actes per ccam")
         try:
@@ -317,34 +319,32 @@ class Gold():
             logging.error("Something went wrong during actes per ccam process")
             raise e
 
-    def gold_amount_charged_per_service(self):
-        logging.info("Processing amount charged per service")
+
+    def gold_actes_per_bed(self):
+        logging.info("Processing number of acts per bud capacity")
         try:
             self.create_table(
-                    "amount_charged_per_service",
+                    "actes_per_bed",
                     [
-                        {"arg": "amount_charged_euros", "type": "int"},
-                        {"arg": "service_code", "type": "String"},
                         {"arg": "service_label", "type": "String"},
+                        {"arg": "capacite_lits", "type": "Int"},
+                        {"arg": "nb_actes", "type": "Int"},
                     ]
             )
 
             clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.amount_charged_per_service
-                        SELECT
-                            sum(ccam.tarif_euros) as amount_charged_euros,
-                            services.service_code as service_code,
-                            services.service_label as service_label
-                        FROM {self.db}.sejours_silver sejours
-                        JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
-                        JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
-                        JOIN {self.db}.services_silver services ON services.service_code = sejours.service_code
-                        JOIN {self.db}.ccam_silver ccam ON ccam.code_ccam = actes.code_ccam
-                        GROUP BY service_code, service_label
+                    INSERT INTO {self.db}.actes_per_bed
+                         SELECT services.service_label, services.capacite_lits, COUNT(*) AS nb_actes
+                            FROM {self.db}.sejours_silver sejours
+                            JOIN {self.db}.actes_silver actes ON actes.patient_id = sejours.patient_id
+                            JOIN {self.db}.services_silver services ON services.service_code = sejours.service_code
+                            WHERE actes.acte_ts BETWEEN sejours.admission_ts AND sejours.discharge_ts
+                            GROUP BY services.service_label, services.capacite_lits
             ''')
         except Exception as e:
-            logging.error("Something went wrong during aount charged per service process")
+            logging.error("Something went wrong during actes per bed capacity")
             raise e
+
 
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
@@ -536,6 +536,7 @@ def main():
         gold.gold_service_categories_per_day()
         gold.gold_actes_per_service()
         gold.gold_avg_actes_per_stay()
+        gold.gold_actes_per_bed()
         gold.gold_actes_per_ccam()
         gold.gold_amount_charged_per_service()
         logging.info("STEP GOLD COMPLETED")
