@@ -294,6 +294,29 @@ class Gold():
             logging.error("Something went wrong during actes per service process")
             raise e
 
+    def gold_actes_per_ccam(self):
+        logging.info("Processing actes per ccam")
+        try:
+            self.create_table(
+                    "actes_per_ccam",
+                    [
+                        {"arg": "libelle", "type": "String"},
+                        {"arg": "code_ccam", "type": "String"},
+                        {"arg": "actes_count", "type": "int"},
+                    ]
+            )
+
+            clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.actes_per_ccam
+                        SELECT ccam.libelle AS libelle, ccam.code_ccam AS code_ccam, count(actes.acte_ts) AS actes_count
+                        FROM {self.db}.actes_silver actes
+                        JOIN {self.db}.ccam_silver ccam ON ccam.code_ccam = actes.code_ccam
+                        GROUP BY ccam.libelle, ccam.code_ccam
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during actes per ccam process")
+            raise e
+
     def gold_create_age_per_sex(self):
         logging.info("CREATING AGE GROUP")
         try:
@@ -484,6 +507,7 @@ def main():
         gold.gold_service_categories_per_day()
         gold.gold_actes_per_service()
         gold.gold_avg_actes_per_stay()
+        gold.gold_actes_per_ccam()
         logging.info("STEP GOLD COMPLETED")
     except Exception as e:
         logging.error("Something went wrong during golding")
