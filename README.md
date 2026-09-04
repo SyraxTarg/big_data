@@ -142,6 +142,11 @@ Pour vérifier que les conteneurs fonctionnent correctement :
 docker compose ps
 ```
 
+Le cronjob va lancer le pipeline médaillon de la génération du lake jusqu'au gold. Le job se lance tous les jours à 1h00 du matin (on part du principe que l'export des données se fait à minuit). Lancer le cronjob :
+```bash
+uv run scheduler
+```
+
 ---
 
 ### 3. Installation des Dépendances Python
