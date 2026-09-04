@@ -173,4 +173,11 @@ uv run silver
 uv run gold
 ```
 
+### 5. Utiliser Metabase
 
+A la fin du formulaire d'inscription de Metabase, on vous demandera de choisir votre source de données.
+
+- Choisir Clickhouse
+- Host: clickhouse
+- Port : 8123
+- les credentials sont ceux utilisés pour clickhouse
