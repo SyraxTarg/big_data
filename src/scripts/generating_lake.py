@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 directory_source = "file_storage"
 directory_lake = "lake"
 last_lake_generation_path = "config/last_lake_generation.csv"
-ALLOWED_RESOURCES = ["diagnostics", "monitoring", "patients", "referentiels", "sejours"]
+ALLOWED_RESOURCES = ["diagnostics", "monitoring", "patients", "referentiels", "sejours", "actes"]
 
 def if_not_exist_create_it(path) -> None:
     logging.info(f'Checking if {path} exists')
@@ -41,7 +41,8 @@ def main():
             if_not_exist_create_it(f'{directory_lake}/{dir}')
             for dir_date in os.listdir(f'{directory_source}/{dir}'):
                 logging.info(f'Entering {directory_source}/{dir}')
-                if datetime.datetime.strptime(dir_date.replace(",", ""), "%Y-%m-%d").date() > get_last_date_in_lake():
+                if datetime.datetime.strptime(dir_date.replace(",", ""), "%Y-%m-%d").date() > get_last_date_in_lake() or dir_date not in os.listdir(f'lake/{dir}'):
+                    print(datetime.datetime.strptime(dir_date.replace(",", ""), "%Y-%m-%d").date(), get_last_date_in_lake())
                     if_not_exist_create_it(f'{directory_lake}/{dir}/{dir_date}')
 
                     for filename in os.listdir(f'{directory_source}/{dir}/{dir_date}'):
@@ -55,7 +56,8 @@ def main():
                                         writer.writerow((row[0], row[4], row[5], row[6]))
                         else:
                             shutil.copyfile(f'{directory_source}/{dir}/{dir_date}/{filename}', f'{directory_lake}/{dir}/{dir_date}/{filename}')
-                    last_date = datetime.datetime.strptime(dir_date.replace(",", ""), "%Y-%m-%d").date()
+                    if datetime.datetime.strptime(dir_date.replace(",", ""), "%Y-%m-%d").date() > last_date:
+                        last_date = datetime.datetime.strptime(dir_date.replace(",", ""), "%Y-%m-%d").date()
         else:
             logging.warning("Unknown directory : passing.")
 
