@@ -271,19 +271,19 @@ class Gold():
             self.create_table(
                     "actes_per_service_gold",
                     [
-                        {"arg": "service_label", "type": "String"},
-                        {"arg": "actes_count", "type": "int"}
+                        {"arg": "actes_count", "type": "int"},
+                        {"arg": "service_label", "type": "String"}
                     ]
             )
 
             clickhouse_client.query(f'''
                     INSERT INTO {self.db}.actes_per_service_gold
-                        SELECT services.service_label as service_label, count(actes.acte_ts) as actes_count
+                        SELECT count(actes.acte_ts) as actes_count, services.service_label as service_label
                         FROM {self.db}.sejours_silver sejours
                         JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
                         JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
                         JOIN {self.db}.services_silver services ON services.service_code = sejours.service_code
-                        GROUP BY service_code, service_label
+                        GROUP BY service_label
             ''')
         except Exception as e:
             logging.error("Something went wrong during actes per service process")
@@ -293,14 +293,14 @@ class Gold():
         logging.info("Processing average actes per stay")
         try:
             self.create_table(
-                    "avg_actes_per_stay",
+                    "avg_actes_per_stay_gold",
                     [
                         {"arg": "avg_actes_count", "type": "float"},
                     ]
             )
 
             clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.avg_actes_per_stay
+                    INSERT INTO {self.db}.avg_actes_per_stay_gold
                         WITH cte AS (
                             SELECT count(acte_ts) as actes_count, stay_id
                             FROM {self.db}.sejours_silver sejours
@@ -312,7 +312,7 @@ class Gold():
                         FROM cte
             ''')
         except Exception as e:
-            logging.error("Something went wrong during actes per service process")
+            logging.error("Something went wrong during actes per stay process")
             raise e
 
 
@@ -321,17 +321,16 @@ class Gold():
         logging.info("Processing actes per ccam")
         try:
             self.create_table(
-                    "actes_per_ccam",
+                    "actes_per_ccam_gold",
                     [
                         {"arg": "libelle", "type": "String"},
-                        {"arg": "code_ccam", "type": "String"},
                         {"arg": "actes_count", "type": "int"},
                     ]
             )
 
             clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.actes_per_ccam
-                        SELECT ccam.libelle AS libelle, ccam.code_ccam AS code_ccam, count(actes.acte_ts) AS actes_count
+                    INSERT INTO {self.db}.actes_per_ccam_gold
+                        SELECT ccam.libelle AS libelle, count(actes.acte_ts) AS actes_count
                         FROM {self.db}.actes_silver actes
                         JOIN {self.db}.ccam_silver ccam ON ccam.code_ccam = actes.code_ccam
                         GROUP BY ccam.libelle, ccam.code_ccam
@@ -345,7 +344,7 @@ class Gold():
         logging.info("Processing number of acts per bud capacity")
         try:
             self.create_table(
-                    "actes_per_bed",
+                    "actes_per_bed_gold",
                     [
                         {"arg": "service_label", "type": "String"},
                         {"arg": "capacite_lits", "type": "Int"},
@@ -354,7 +353,7 @@ class Gold():
             )
 
             clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.actes_per_bed
+                    INSERT INTO {self.db}.actes_per_bed_gold
                          SELECT services.service_label, services.capacite_lits, COUNT(*) AS nb_actes
                             FROM {self.db}.sejours_silver sejours
                             JOIN {self.db}.actes_silver actes ON actes.patient_id = sejours.patient_id
@@ -370,18 +369,18 @@ class Gold():
         logging.info("Processing amount charged per service")
         try:
             self.create_table(
-                    "amount_charged_per_service",
+                    "amount_charged_per_service_gold",
                     [
-                        {"arg": "service_label", "type": "String"},
-                        {"arg": "amount_charged_euros", "type": "int"}
+                        {"arg": "amount_charged_euros", "type": "int"},
+                        {"arg": "service_label", "type": "String"}
                     ]
             )
 
             clickhouse_client.query(f'''
-                INSERT INTO {self.db}.amount_charged_per_service
+                INSERT INTO {self.db}.amount_charged_per_service_gold
                         SELECT
-                            services.service_label as service_label,
-                            sum(ccam.tarif_euros) as amount_charged_euros
+                            sum(ccam.tarif_euros) as amount_charged_euros,
+                            services.service_label as service_label
                         FROM {self.db}.sejours_silver sejours
                         JOIN {self.db}.patients_silver patients ON patients.patient_id = sejours.patient_id
                         JOIN {self.db}.actes_silver actes ON actes.patient_id = patients.patient_id
