@@ -181,7 +181,7 @@ class Gold():
             self.create_table(
                     "readmissions_gold",
                     [
-                        {"arg": "service_code", "type": "String"},
+                        {"arg": "service_label", "type": "String"},
                         {"arg": "total_stay", "type": "Int"},
                         {"arg": "total_readmissions", "type": "Int"},
                         {"arg": "readmission_percentage", "type": "Float64"},
@@ -192,14 +192,15 @@ class Gold():
                 WITH exists_and_admissions AS (
                     SELECT
                         patient_id,
-                        service_code,
+                        service_label,
                         discharge_ts AS last_exit_date,
                         LEAD(admission_ts) OVER (PARTITION BY patient_id ORDER BY admission_ts ASC) AS next_admission_date
                     FROM {self.db}.sejours_silver
+                    JOIN {self.db}.services_silver ON {self.db}.sejours_silver.service_code = {self.db}.services_silver.service_code
                 ),
                 readmissions AS (
                     SELECT
-                        service_code,
+                        service_label,
                         patient_id,
                         CASE
                             WHEN next_admission_date IS NOT NULL
@@ -211,12 +212,12 @@ class Gold():
                     FROM exists_and_admissions
                 )
                 SELECT
-                    service_code,
+                    service_label,
                     COUNT(DISTINCT patient_id) AS total_stays,
                     SUM(is_readmitted) AS total_readmissions_30j,
                     ROUND(SUM(is_readmitted) * 100.0 / COUNT(DISTINCT patient_id), 2) AS readmission_percentage
                 FROM readmissions
-                GROUP BY service_code
+                GROUP BY service_label
                 ORDER BY readmission_percentage DESC;
             ''')
         except Exception as e:
