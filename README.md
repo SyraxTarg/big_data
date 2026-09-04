@@ -84,6 +84,8 @@ big_data/
 │   │       └── clickhouse.py
 │   └── scripts/                  # Code source des scripts de la pipeline
 │       ├── generating_lake.py    # Ingestion incrémentale file_storage -> lake
+|       ├── cron.py               # Script contenant le job lancé par le scheduler
+|       ├── scheduler.py          # Script qui lance le scheduler de cronjob
 │       ├── bronze.py             # Ingestion lake -> ClickHouse Bronze
 │       ├── silver.py             # Nettoyage et mise en conformité Silver
 │       └── gold.py               # Modélisation et KPI analytiques Gold
@@ -102,7 +104,7 @@ Assurez-vous d'avoir installé sur votre machine :
 - **Docker** & **Docker Compose**
 - **Python 3.13+** (ou simplement [uv](https://github.com/astral-sh/uv))
 
-Assurez vous également d'avoir ajouté le dossier `file_storage` contenant les données brutes à la racide de ce repo.
+Assurez vous également d'avoir ajouté le dossier `file_storage` contenant les données brutes à la racine de ce repo.
 
 ---
 
@@ -129,7 +131,7 @@ CLICKHOUSE_DB="chu"
 
 ---
 
-### 2. Lancement des Services Docker
+### 2. Lancement des Services
 
 Lancez la stack de bases de données et d'outils BI en arrière-plan :
 
