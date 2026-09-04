@@ -89,7 +89,6 @@ class Silver():
                             service_label String,
                             categorie String,
                             capacite_lits Int,
-                            pole String,
                             inserted_at DateTime,
                             data_path String,
                             data_path_description String
@@ -99,7 +98,7 @@ class Silver():
                     ''')
             clickhouse_client.command(f'''
                         INSERT INTO {self.db}.services_silver
-                            SELECT service_code, service_label, categorie, capacite_lits, pole, inserted_at, s.data_path, d.data_path AS data_path_description
+                            SELECT service_code, service_label, categorie, capacite_lits, inserted_at, s.data_path, d.data_path AS data_path_description
                             FROM "{self.db}"."services_bronze" s
                             JOIN {self.db}.description_service_bronze d
                             ON {self.db}.services_bronze.service_code = {self.db}.description_service_bronze.service_code

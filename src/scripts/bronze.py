@@ -196,7 +196,6 @@ class Bronze():
                             {"arg": "service_code", "type": "String"},
                             {"arg": "categorie", "type": "String"},
                             {"arg": "capacite_lits", "type": "Int"},
-                            {"arg": "pole", "type": "String"},
                             {"arg": "inserted_at", "type": "DateTime"},
                             {"arg": "data_path", "type": "String"},
                         ]
@@ -208,6 +207,7 @@ class Bronze():
                                 with open(f'{directory}/{date_dir}/{file}') as file_obj:
                                     reader_obj_referentiels = csv.reader(file_obj)
                                     for row in reader_obj_referentiels:
+                                        del row[-1]
                                         row.append(datetime.now())
                                         row.append(f'{directory}/{date_dir}/{file}')
                                         description_service.append(row)
