@@ -141,7 +141,7 @@ class Gold():
             self.create_table(
                     "readmissions_gold",
                     [
-                        {"arg": "service_code", "type": "String"},
+                        {"arg": "service_label", "type": "String"},
                         {"arg": "total_stay", "type": "Int"},
                         {"arg": "total_readmissions", "type": "Int"},
                         {"arg": "readmission_percentage", "type": "Float64"},
@@ -149,35 +149,36 @@ class Gold():
                 )
             clickhouse_client.query(f'''
                 INSERT INTO {self.db}.readmissions_gold
-                    WITH exists_and_admissions AS (
-                        SELECT
-                            patient_id,
-                            service_code,
-                            discharge_ts AS last_exit_date,
-                            LEAD(admission_ts) OVER (PARTITION BY patient_id ORDER BY admission_ts ASC) AS next_admission_date
-                        FROM {self.db}.sejours_silver
-                    ),
-                    readmissions AS (
-                        SELECT
-                            service_code,
-                            patient_id,
-                            CASE
-                                WHEN next_admission_date IS NOT NULL
-                                AND dateDiff('day', last_exit_date, next_admission_date) > 0
-                                AND dateDiff('day', last_exit_date, next_admission_date) <= 30
-                                THEN 1
-                                ELSE 0
-                            END AS is_readmitted
-                        FROM exists_and_admissions
-                    )
+                WITH exists_and_admissions AS (
                     SELECT
-                        service_code,
-                        COUNT(DISTINCT patient_id) AS total_stays,
-                        SUM(is_readmitted) AS total_readmissions_30j,
-                        ROUND(SUM(is_readmitted) * 100.0 / COUNT(DISTINCT patient_id), 2) AS readmission_percentage
-                    FROM readmissions
-                    GROUP BY service_code
-                    ORDER BY readmission_percentage DESC;
+                        patient_id,
+                        service_label,
+                        discharge_ts AS last_exit_date,
+                        LEAD(admission_ts) OVER (PARTITION BY patient_id ORDER BY admission_ts ASC) AS next_admission_date
+                    FROM {self.db}.sejours_silver
+                    JOIN {self.db}.services_silver ON {self.db}.sejours_silver.service_code = {self.db}.services_silver.service_code
+                ),
+                readmissions AS (
+                    SELECT
+                        service_label,
+                        patient_id,
+                        CASE
+                            WHEN next_admission_date IS NOT NULL
+                            AND dateDiff('day', last_exit_date, next_admission_date) > 0
+                            AND dateDiff('day', last_exit_date, next_admission_date) <= 30
+                            THEN 1
+                            ELSE 0
+                        END AS is_readmitted
+                    FROM exists_and_admissions
+                )
+                SELECT
+                    service_label,
+                    COUNT(DISTINCT patient_id) AS total_stays,
+                    SUM(is_readmitted) AS total_readmissions_30j,
+                    ROUND(SUM(is_readmitted) * 100.0 / COUNT(DISTINCT patient_id), 2) AS readmission_percentage
+                FROM readmissions
+                GROUP BY service_label
+                ORDER BY readmission_percentage DESC;
             ''')
         except Exception as e:
             logging.error("Something went wrong during readmissions per services process")
@@ -486,7 +487,7 @@ class Gold():
             self.gold_insert_age_per_sex(66)
             self.gold_readmission_per_services()
             self.gold_readmission_total()
-            
+
             self.gold_service_categories_dms()
             self.gold_service_categories_per_day()
             self.gold_actes_per_service()
