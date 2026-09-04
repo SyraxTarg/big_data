@@ -22,6 +22,7 @@ class Gold():
         except Exception as e:
             raise e
 
+    # Partie 1
     def gold_service_dms(self):
         logging.info("Processing services DMS")
         try:
@@ -66,74 +67,6 @@ class Gold():
         except Exception as e:
             logging.error("Something went wrong during patients count per day process")
             raise e
-
-
-    def gold_service_categories_per_day(self):
-            logging.info("Processing stay count per day by categories")
-            try:
-                self.create_table(
-                        "categories_per_day_gold",
-                        [
-                            {"arg": "categorie", "type": "String"},
-                            {"arg": "stay_count", "type": "Int"},
-                            {"arg": "date", "type": "Date"},
-                        ]
-                    )
-                clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.categories_per_day_gold
-                        SELECT categorie, COUNT(date(admission_ts)) AS stay_count, date(admission_ts) AS date
-                        FROM {self.db}.services_silver services
-                        JOIN {self.db}.sejours_silver sejours ON sejours.service_code = services.service_code
-                        GROUP BY categorie, date
-                        ORDER BY date ASC
-                ''')
-            except Exception as e:
-                logging.error("Something went wrong during stay count per categories per day process")
-                raise e
-
-
-    def gold_service_categories(self):
-            logging.info("Processing stay count per categories")
-            try:
-                self.create_table(
-                        "categories_stay_gold",
-                        [
-                            {"arg": "categorie", "type": "String"},
-                            {"arg": "stay_count", "type": "Int"},
-                        ]
-                    )
-                clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.categories_stay_gold
-                        SELECT categorie, COUNT(date(admission_ts)) AS stay_count
-                        FROM {self.db}.services_silver services
-                        JOIN {self.db}.sejours_silver sejours ON sejours.service_code = services.service_code
-                        GROUP BY categorie
-                        ORDER BY stay_count ASC
-                ''')
-            except Exception as e:
-                logging.error("Something went wrong during patient count per categories process")
-                raise e
-
-    def gold_service_categories_dms(self):
-            logging.info("Processing categories DMS")
-            try:
-                self.create_table(
-                        "categories_dms_gold",
-                        [
-                            {"arg": "categorie", "type": "String"},
-                            {"arg": "DMS", "type": "Float64"},
-                        ]
-                    )
-                clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.categories_dms_gold
-                        SELECT categorie, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS
-                        FROM {self.db}.services_silver services
-                        JOIN {self.db}.sejours_silver sejours ON sejours.service_code = services.service_code
-                        GROUP BY categorie
-                ''')
-            except Exception as e:
-                logging.error("Something went wrong during categories DMS process")
-                raise e
 
     def gold_readmission_per_services(self):
         logging.info("Processing readmissions per service")
@@ -226,6 +159,193 @@ class Gold():
             logging.error("Something went wrong during readmissions total process")
             raise e
 
+    def monitoring_alerts_per_day(self):
+        try:
+            BRADYCARDIA_THRESHOLD = 50
+            TACHYCARDIA_THRESHOLD = 100
+            O2_DESATURATION_THRESHOLD = 92
+            FEVER_THRESHOLD = 38.5
+
+            logging.info("Processing monitoring alerts per day")
+            self.create_table(
+                    "monitoring_alerts_per_day_gold",
+                    [
+                        {"arg": "date", "type": "Date"},
+                        {"arg": "total_monitored", "type": "int"},
+                        {"arg": "total_alerts", "type": "int"}
+                    ]
+                )
+            clickhouse_client.query(f'''
+            INSERT INTO {self.db}.monitoring_alerts_per_day_gold
+                SELECT
+                    date(ts) AS date,
+                    COUNT() AS total_monitored,
+                    COUNT(
+                        CASE WHEN  heart_rate < {BRADYCARDIA_THRESHOLD}
+                        OR heart_rate > {TACHYCARDIA_THRESHOLD}
+                        OR spo2 < {O2_DESATURATION_THRESHOLD}
+                        OR temp_c > {FEVER_THRESHOLD} THEN 1 END
+                    ) AS total_alerts
+                FROM {self.db}.monitoring_silver
+                GROUP BY date(ts)
+                ORDER BY date
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during monitoring alerts per day process")
+            raise e
+
+    def gold_create_age_per_sex(self):
+        logging.info("CREATING AGE GROUP TABLE")
+        try:
+            self.create_table(
+                    "age_per_sex_gold",
+                    [
+                        {"arg": "age_group", "type": "String"},
+                        {"arg": "sex", "type": "String"},
+                        {"arg": "patients_count", "type": "Nullable(Int)"},
+                        {"arg": "avg_age", "type": "Float"},
+                        {"arg": "code_cim10", "type": "String"},
+                        {"arg": "libelle_cim10", "type": "String"},
+                    ]
+                )
+        except Exception as e:
+            logging.error("Something went wrong during services copy")
+            raise e
+
+    def gold_insert_age_per_sex(self, age_start: int, age_stop: Optional[int] = None):
+        logging.info(f'Inserting age groups {age_start}-{age_stop}')
+        try:
+            if age_stop:
+                clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10, libelle_cim10)
+                    SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10, libelle FROM (
+                        select p.patient_id AS patient_id, age('year', birth_date, today()) as age, p.sex AS sex, d.code_cim10 AS code_cim10, c.libelle
+                        FROM "{self.db}"."patients_silver" p
+                        JOIN {self.db}.diagnostics_silver d
+                        ON p.patient_id = d.patient_id
+                        JOIN {self.db}.cim10_silver c
+                        ON d.code_cim10 = c.code_cim10
+                        GROUP BY p.patient_id, p.sex, age, d.code_cim10, c.libelle HAVING age BETWEEN {age_start} AND {age_stop}
+                                                ) GROUP BY sex, code_cim10, libelle;
+                ''')
+            else:
+                clickhouse_client.query(f'''
+                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10, libelle_cim10)
+                    SELECT '>{age_start}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10, libelle FROM (
+                        select p.patient_id AS patient_id, age('year', birth_date, today()) as age, p.sex AS sex, d.code_cim10 AS code_cim10, c.libelle
+                        FROM "{self.db}"."patients_silver" p
+                        JOIN {self.db}.diagnostics_silver d
+                        ON p.patient_id = d.patient_id
+                        JOIN {self.db}.cim10_silver c
+                        ON d.code_cim10 = c.code_cim10
+                        GROUP BY p.patient_id, p.sex, age, d.code_cim10, c.libelle HAVING age >= {age_start}
+                                                ) GROUP BY sex, code_cim10, libelle;
+                ''')
+            clickhouse_client.command(f'alter table {self.db}.age_per_sex_gold update patients_count = null where patients_count < 5;')
+        except Exception as e:
+            logging.error("Something went wrong during age group insertion")
+            raise e
+
+    def cohorts_per_diagnostic(self):
+        try:
+            logging.info("Processing cohorts per diagnostics")
+            self.create_table(
+                    "cohorts_per_diagnostic_gold",
+                    [
+                        {"arg": "code_cim10", "type": "String"},
+                        {"arg": "libelle", "type": "String"},
+                        {"arg": "user_count", "type": "int"}
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.cohorts_per_diagnostic_gold
+                    WITH cohort_sizes AS (
+                        SELECT
+                            code_cim10 ,
+                            COUNT(DISTINCT patient_id) AS user_count
+                        FROM {self.db}.diagnostics_silver
+                        GROUP BY code_cim10
+                    )
+                    SELECT
+                        diag.code_cim10,
+                        cim10.libelle,
+                        diag.user_count
+                    FROM cohort_sizes diag
+                    INNER JOIN {self.db}.cim10_silver cim10 ON cim10.code_cim10 = diag.code_cim10
+                    ORDER BY diag.user_count DESC
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during cohorts per diagnostics process")
+            raise e
+
+    # Partie 2
+    def gold_service_categories_dms(self):
+        logging.info("Processing categories DMS")
+        try:
+            self.create_table(
+                    "categories_dms_gold",
+                    [
+                        {"arg": "categorie", "type": "String"},
+                        {"arg": "DMS", "type": "Float64"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.categories_dms_gold
+                    SELECT categorie, AVG(dateDiff(hours, admission_ts, discharge_ts)) AS DMS
+                    FROM {self.db}.services_silver services
+                    JOIN {self.db}.sejours_silver sejours ON sejours.service_code = services.service_code
+                    GROUP BY categorie
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during categories DMS process")
+            raise e
+
+    def gold_service_categories_per_day(self):
+        logging.info("Processing stay count per day by categories")
+        try:
+            self.create_table(
+                    "categories_per_day_gold",
+                    [
+                        {"arg": "categorie", "type": "String"},
+                        {"arg": "stay_count", "type": "Int"},
+                        {"arg": "date", "type": "Date"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.categories_per_day_gold
+                    SELECT categorie, COUNT(date(admission_ts)) AS stay_count, date(admission_ts) AS date
+                    FROM {self.db}.services_silver services
+                    JOIN {self.db}.sejours_silver sejours ON sejours.service_code = services.service_code
+                    GROUP BY categorie, date
+                    ORDER BY date ASC
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during stay count per categories per day process")
+            raise e
+
+
+    def gold_service_categories(self):
+        logging.info("Processing stay count per categories")
+        try:
+            self.create_table(
+                    "categories_stay_gold",
+                    [
+                        {"arg": "categorie", "type": "String"},
+                        {"arg": "stay_count", "type": "Int"},
+                    ]
+                )
+            clickhouse_client.query(f'''
+                INSERT INTO {self.db}.categories_stay_gold
+                    SELECT categorie, COUNT(date(admission_ts)) AS stay_count
+                    FROM {self.db}.services_silver services
+                    JOIN {self.db}.sejours_silver sejours ON sejours.service_code = services.service_code
+                    GROUP BY categorie
+                    ORDER BY stay_count ASC
+            ''')
+        except Exception as e:
+            logging.error("Something went wrong during patient count per categories process")
+            raise e
+        
     def gold_actes_per_service(self):
         logging.info("Processing actes per service")
         try:
@@ -353,149 +473,25 @@ class Gold():
             logging.error("Something went wrong during aount charged per service process")
             raise e
 
-
-    def gold_create_age_per_sex(self):
-        logging.info("CREATING AGE GROUP TABLE")
-        try:
-            self.create_table(
-                    "age_per_sex_gold",
-                    [
-                        {"arg": "age_group", "type": "String"},
-                        {"arg": "sex", "type": "String"},
-                        {"arg": "patients_count", "type": "Nullable(Int)"},
-                        {"arg": "avg_age", "type": "Float"},
-                        {"arg": "code_cim10", "type": "String"},
-                        {"arg": "libelle_cim10", "type": "String"},
-                    ]
-                )
-        except Exception as e:
-            logging.error("Something went wrong during services copy")
-            raise e
-
-    def gold_insert_age_per_sex(self, age_start: int, age_stop: Optional[int] = None):
-        logging.info(f'Inserting age groups {age_start}-{age_stop}')
-        try:
-            if age_stop:
-                clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10, libelle_cim10)
-                    SELECT '{age_start}-{age_stop}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10, libelle FROM (
-                        select p.patient_id AS patient_id, age('year', birth_date, today()) as age, p.sex AS sex, d.code_cim10 AS code_cim10, c.libelle
-                        FROM "{self.db}"."patients_silver" p
-                        JOIN {self.db}.diagnostics_silver d
-                        ON p.patient_id = d.patient_id
-                        JOIN {self.db}.cim10_silver c
-                        ON d.code_cim10 = c.code_cim10
-                        GROUP BY p.patient_id, p.sex, age, d.code_cim10, c.libelle HAVING age BETWEEN {age_start} AND {age_stop}
-                                                ) GROUP BY sex, code_cim10, libelle;
-                ''')
-            else:
-                clickhouse_client.query(f'''
-                    INSERT INTO {self.db}.age_per_sex_gold (age_group, sex, patients_count, avg_age, code_cim10, libelle_cim10)
-                    SELECT '>{age_start}', sex, COUNT(patient_id) AS patients_count, AVG(age) AS avg_age, code_cim10, libelle FROM (
-                        select p.patient_id AS patient_id, age('year', birth_date, today()) as age, p.sex AS sex, d.code_cim10 AS code_cim10, c.libelle
-                        FROM "{self.db}"."patients_silver" p
-                        JOIN {self.db}.diagnostics_silver d
-                        ON p.patient_id = d.patient_id
-                        JOIN {self.db}.cim10_silver c
-                        ON d.code_cim10 = c.code_cim10
-                        GROUP BY p.patient_id, p.sex, age, d.code_cim10, c.libelle HAVING age >= {age_start}
-                                                ) GROUP BY sex, code_cim10, libelle;
-                ''')
-            clickhouse_client.command(f'alter table {self.db}.age_per_sex_gold update patients_count = null where patients_count < 5;')
-        except Exception as e:
-            logging.error("Something went wrong during age group insertion")
-            raise e
-
-    def monitoring_alerts_per_day(self):
-        try:
-            BRADYCARDIA_THRESHOLD = 50
-            TACHYCARDIA_THRESHOLD = 100
-            O2_DESATURATION_THRESHOLD = 92
-            FEVER_THRESHOLD = 38.5
-
-            logging.info("Processing monitoring alerts per day")
-            self.create_table(
-                    "monitoring_alerts_per_day_gold",
-                    [
-                        {"arg": "date", "type": "Date"},
-                        {"arg": "total_monitored", "type": "int"},
-                        {"arg": "total_alerts", "type": "int"}
-                    ]
-                )
-            clickhouse_client.query(f'''
-            INSERT INTO {self.db}.monitoring_alerts_per_day_gold
-                SELECT
-                    date(ts) AS date,
-                    COUNT() AS total_monitored,
-                    COUNT(
-                        CASE WHEN  heart_rate < {BRADYCARDIA_THRESHOLD}
-                        OR heart_rate > {TACHYCARDIA_THRESHOLD}
-                        OR spo2 < {O2_DESATURATION_THRESHOLD}
-                        OR temp_c > {FEVER_THRESHOLD} THEN 1 END
-                    ) AS total_alerts
-                FROM {self.db}.monitoring_silver
-                GROUP BY date(ts)
-                ORDER BY date
-            ''')
-        except Exception as e:
-            logging.error("Something went wrong during monitoring alerts per day process")
-            raise e
-
-    def cohorts_per_diagnostic(self):
-        try:
-            logging.info("Processing cohorts per diagnostics")
-            self.create_table(
-                    "cohorts_per_diagnostic_gold",
-                    [
-                        {"arg": "code_cim10", "type": "String"},
-                        {"arg": "libelle", "type": "String"},
-                        {"arg": "user_count", "type": "int"}
-                    ]
-                )
-            clickhouse_client.query(f'''
-                INSERT INTO {self.db}.cohorts_per_diagnostic_gold
-                    WITH cohort_sizes AS (
-                        SELECT
-                            code_cim10 ,
-                            COUNT(DISTINCT patient_id) AS user_count
-                        FROM {self.db}.diagnostics_silver
-                        GROUP BY code_cim10
-                    )
-                    SELECT
-                        diag.code_cim10,
-                        cim10.libelle,
-                        diag.user_count
-                    FROM cohort_sizes diag
-                    INNER JOIN {self.db}.cim10_silver cim10 ON cim10.code_cim10 = diag.code_cim10
-                    ORDER BY diag.user_count DESC
-            ''')
-        except Exception as e:
-            logging.error("Something went wrong during cohorts per diagnostics process")
-            raise e
-
     def hospital_management(self):
         try:
             logging.info("PROCESSING HOSPITAL MANAGEMENT")
+            # Partie 1
             self.gold_service_dms()
             self.gold_service_per_day()
-            self.gold_create_age_per_sex()
-            self.gold_insert_age_per_sex(0, 10)
-            self.gold_insert_age_per_sex(11, 17)
-            self.gold_insert_age_per_sex(18, 25)
-            self.gold_insert_age_per_sex(26, 39)
-            self.gold_insert_age_per_sex(40, 65)
-            self.gold_insert_age_per_sex(66)
             self.gold_readmission_per_services()
             self.gold_readmission_total()
+            self.monitoring_alerts_per_day()
 
+            # Partie 2
             self.gold_service_categories_dms()
             self.gold_service_categories_per_day()
+            self.gold_service_categories()
             self.gold_actes_per_service()
             self.gold_avg_actes_per_stay()
-            self.gold_actes_per_bed()
             self.gold_actes_per_ccam()
+            self.gold_actes_per_bed()
             self.gold_amount_charged_per_service()
-            self.gold_service_categories()
             logging.info("HOSPITAL MANAGEMENT PROCESS DONE\n")
         except Exception as e:
             logging.error("Something went wrong during hospital management process")
@@ -505,7 +501,13 @@ class Gold():
         try:
             logging.info("PROCESSING CLINICAL RESEARCH")
             self.cohorts_per_diagnostic()
-            self.monitoring_alerts_per_day()
+            self.gold_create_age_per_sex()
+            self.gold_insert_age_per_sex(0, 10)
+            self.gold_insert_age_per_sex(11, 17)
+            self.gold_insert_age_per_sex(18, 25)
+            self.gold_insert_age_per_sex(26, 39)
+            self.gold_insert_age_per_sex(40, 65)
+            self.gold_insert_age_per_sex(66)
             logging.info("CLINICAL RESEARCH PROCESS DONE\n")
         except Exception as e:
             logging.error("Something went wrong during clinical research process")
@@ -513,7 +515,7 @@ class Gold():
 
 def main():
     try:
-        logging.info("STEP: GOLD")
+        logging.info("STEP: GOLD\n")
         gold = Gold()
         gold.hospital_management()
         gold.clinical_research()
